@@ -211,7 +211,6 @@ public:
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
                     double dDep = pixDep2 - pixDep1;
-                    dDep = fabs(dDep) < 0.5 ? 0 : dDep;
                     thisSum += fabs(dDep) + fabs(dInt);
                     residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep;                    
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt;
@@ -221,7 +220,7 @@ public:
             }
         }
         imshow("Residual", residualImage);
-//        waitKey(0);
+        waitKey(0);
 
         if(thisSum < sum){
             sum = thisSum;
@@ -306,7 +305,7 @@ public:
             this->sum = INT_MAX;
             cerr << "Iniciando de:" << endl;
             cerr << getMatrixRtFromPose6D(actualPoseVector6D);
-            for (int i = 0; i < iterMult * 10; ++i) {
+            for (int i = 0; i < iterMult * 5; ++i) {
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 this->computeResidualsAndJacobians(tempRefGray, tempRefDepth, tempActGray, tempActDepth, residuals, jacobians, level);
                 bool converged = doSingleIteration(residuals, jacobians, level);

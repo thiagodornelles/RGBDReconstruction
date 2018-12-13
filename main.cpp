@@ -78,7 +78,7 @@ int main(int argc, char *argv[]){
         vis.UpdateRender();
         vis.PollEvents();
 
-        if(i == 50)
+        if(i == 10)
             vis.Run();
         char key = waitKey(1);
         if(key == 'q'){
