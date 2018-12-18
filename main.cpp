@@ -6,6 +6,7 @@
 #include <Core/Utility/Helper.h>
 #include <IO/IO.h>
 #include <Visualization/Visualization.h>
+#include <Integration/ScalableTSDFVolume.h>
 
 #include <opencv2/highgui/highgui.hpp>
 
@@ -23,6 +24,7 @@ int main(int argc, char *argv[]){
 
     //    SetVerbosityLevel(VerbosityLevel::VerboseAlways);
 
+    ScalableTSDFVolume tsdf(0.005, 0.01, TSDFVolumeColorType::RGB8);
     Eigen::Matrix4d transf = Eigen::Matrix4d::Identity();
     transf <<  1,  0,  0,  0,
                0, -1,  0,  0,
@@ -41,7 +43,8 @@ int main(int argc, char *argv[]){
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
-
+    Visualizer imgVis;
+    imgVis.CreateVisualizerWindow("Image", 640, 480);
     Visualizer vis;
     vis.CreateVisualizerWindow("Visualization", 640, 480);
     vis.GetRenderOption().point_size_ = 1;
@@ -69,16 +72,28 @@ int main(int argc, char *argv[]){
         //Visualization
         shared_ptr<RGBDImage> rgbdImage;
         rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(), cameraIntrisecs);
-        shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, cameraIntrisecs, initCam);        
+
+        shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, cameraIntrisecs, initCam);
         pcd->Transform(transf);
+
         aligner.getPoseTransform(gray2, depth2, gray1, depth1);
         transf = transf * aligner.getMatrixRtFromPose6D(aligner.getPose6D());
+
+//        tsdf.Integrate(*rgbdImage, cameraIntrisecs, transf.inverse());
+//        shared_ptr<TriangleMesh> pcd = tsdf.ExtractTriangleMesh();
+//        pcd->ComputeTriangleNormals();
+
         vis.AddGeometry({pcd});
         vis.UpdateGeometry();
         vis.UpdateRender();
-        vis.PollEvents();
+        vis.PollEvents();        
+//        shared_ptr<Image> depth = vis.CaptureScreenFloatBuffer();
+//        imgVis.AddGeometry({depth});
+//        imgVis.UpdateGeometry();
+//        imgVis.UpdateRender();
+//        imgVis.PollEvents();
 
-        if(i == 10)
+        if(i == 50)
             vis.Run();
         char key = waitKey(1);
         if(key == 'q'){

@@ -185,16 +185,17 @@ public:
                 //******* END Projection of PointCloud on the image plane ********//
 
                 //Checks if this pixel projects inside of the source image
-                if((transfR_int >= 0 && transfR_int < nRows) & (transfC_int >= 0 && transfC_int < nCols)) {
+                if((transfR_int >= 0 && transfR_int < nRows) & (transfC_int >= 0 && transfC_int < nCols)) {                    
                     double pixInt1 = *(refIntensityImage.ptr<uchar>(y, x))/255.f;
                     double pixInt2 = *(actIntensityImage.ptr<uchar>(transfR_int, transfC_int))/255.f;
                     double pixDep1 = *(refDepthImage.ptr<ushort>(y, x))/5000.f;
                     double pixDep2 = *(actDepthImage.ptr<ushort>(transfR_int, transfC_int))/5000.f;
+
                     //Assign the pixel residual and jacobian to its corresponding row
                     uint i = nCols * y + x;
 
                     double wInt = 1;
-                    double wDep = 1;
+                    double wDep = level - 1;
                     jacobians(i,0)  = wDep * jacobianDepth(0,0);
                     jacobians(i,1)  = wDep * jacobianDepth(0,1);
                     jacobians(i,2)  = wDep * jacobianDepth(0,2);
@@ -211,6 +212,7 @@ public:
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
                     double dDep = pixDep2 - pixDep1;
+
                     thisSum += fabs(dDep) + fabs(dInt);
                     residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep;                    
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt;
@@ -220,7 +222,7 @@ public:
             }
         }
         imshow("Residual", residualImage);
-        waitKey(0);
+        waitKey(1);
 
         if(thisSum < sum){
             sum = thisSum;
@@ -305,7 +307,7 @@ public:
             this->sum = INT_MAX;
             cerr << "Iniciando de:" << endl;
             cerr << getMatrixRtFromPose6D(actualPoseVector6D);
-            for (int i = 0; i < iterMult * 5; ++i) {
+            for (int i = 0; i < iterMult * 7; ++i) {
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 this->computeResidualsAndJacobians(tempRefGray, tempRefDepth, tempActGray, tempActDepth, residuals, jacobians, level);
                 bool converged = doSingleIteration(residuals, jacobians, level);
