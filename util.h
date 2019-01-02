@@ -17,7 +17,7 @@ shared_ptr<RGBDImage> ReadRGBDImage(
         const char* color_filename, const char* depth_filename,
         const PinholeCameraIntrinsic &intrinsic)
 {
-    double depth_scale = 5000.0, depth_trunc = 2.0;
+    double depth_scale = 5000.0, depth_trunc = 4.0;
     bool convert_rgb_to_intensity = false;
 
     Image color, depth;
@@ -37,7 +37,7 @@ shared_ptr<RGBDImage> ReadRGBDImage(
     return rgbd_image;
 }
 
-Mat normalsFromDepth(Mat &depth, PinholeCameraIntrinsic &intrisecs){
+Mat normalsFromDepth(Mat &depth){
 
     Mat normals(depth.size(), CV_32FC3);
     for(int x = 1; x < depth.cols-1; ++x){
@@ -53,8 +53,8 @@ Mat normalsFromDepth(Mat &depth, PinholeCameraIntrinsic &intrisecs){
             float dzdx = x1 - x2;
             float dzdy = y1 - y2;
 
-            Vec3f d(-dzdy, -dzdx, 0.001);
-
+            Vec3f d(-dzdy, -dzdx, 1);
+            Vec3f c(0,0,1);
             Vec3f n = normalize(d);
             normals.at<Vec3f>(y, x) = n;
         }
