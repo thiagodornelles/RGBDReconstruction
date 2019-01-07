@@ -70,18 +70,50 @@ public:
         this->actualPoseVector6D = poseVector6D;
     }
 
-    void computeResidualsAndJacobians(Mat &refIntensityImage, Mat &refDepthImage,
+    void computeResidualsAndJacobians(Mat &refIntImage, Mat &refDepImage,
                                       Mat &actIntImage, Mat &actDepImage,
-                                      MatrixXd &residuals, MatrixXd &jacobians,
+                                      MatrixXd &residuals, MatrixXd &jacobians,                                      
                                       int level)
     {
         int l = pow(2, level);
-        Mat residualImage = Mat::zeros(refIntensityImage.rows * 2, refIntensityImage.cols, CV_64FC1);
+        Mat residualImage = Mat::zeros(refIntImage.rows * 2, refIntImage.cols, CV_64FC1);
         Mat actIntDerivX, actIntDerivY, actDepDerivX, actDepDerivY;
         Scharr(actIntImage, actIntDerivX, CV_64F, 1, 0, gradIntScale * l, 0.0, cv::BORDER_DEFAULT);
         Scharr(actIntImage, actIntDerivY, CV_64F, 0, 1, gradIntScale * l, 0.0, cv::BORDER_DEFAULT);
         Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, gradDepScale * l, 0.0, cv::BORDER_DEFAULT);
         Scharr(actDepImage, actDepDerivY, CV_64F, 0, 1, gradDepScale * l, 0.0, cv::BORDER_DEFAULT);
+
+        //---- NORMALS ----
+        Mat K = (Mat_<double>(3, 3) << intrinsecs.GetFocalLength().first,
+                 0, intrinsecs.GetPrincipalPoint().first,
+                 0, intrinsecs.GetFocalLength().second,
+                 intrinsecs.GetPrincipalPoint().second,
+                 0, 0, 1);
+
+        RgbdNormals normalComp = RgbdNormals(refDepImage.rows, refDepImage.cols,
+                                             CV_64F, K, 3, RgbdNormals::RGBD_NORMALS_METHOD_FALS);
+        Mat refNormals, actNormals;
+        Mat refPoints3d, actPoints3d;
+//        depthTo3d(refDepImage, K, refPoints3d);
+        depthTo3d(actDepImage, K, actPoints3d);
+//        normalComp(refPoints3d, refNormals);
+        normalComp(actPoints3d, actNormals);
+
+        Mat angles(actNormals.rows, actNormals.cols, CV_64FC1);
+        for (int x = 0; x < actNormals.cols; ++x) {
+            for (int y = 0; y < actNormals.rows; ++y) {
+                Vec3d c (0, 0, -1);
+                Vec3d n = actNormals.at<Vec3d>(y, x);                
+                double uv = isnan(n[0]) ? 0 : n.dot(c);                
+//                cerr << c << " dot " << n << " angle " << angle << endl;
+                angles.at<double>(y, x) = acos(uv) < 1.6 ? uv : 0;
+            }
+        }
+
+//        imshow("refNormals", refNormals);
+        imshow("angles", angles);
+
+        //---- NORMALS ----
 
         //Extrinsecs
         double x = actualPoseVector6D(0);
@@ -102,8 +134,8 @@ public:
         Matrix4d Rt = getMatrixRtFromPose6D(actualPoseVector6D);
 
         //Calculation of jacobians and residuals
-        int nCols = refIntensityImage.cols;
-        int nRows = refIntensityImage.rows;
+        int nCols = refIntImage.cols;
+        int nRows = refIntImage.rows;
         double thisSum = 0;
 
         for (int y = 0; y < nRows; ++y) {
@@ -111,7 +143,7 @@ public:
                 //******* BEGIN Unprojection of DepthMap ********//
                 Vector4d refPoint3D;
                 //                Vector4d actPoint3D;
-                refPoint3D(2) = *refDepthImage.ptr<ushort>(y, x)/5000.f;
+                refPoint3D(2) = *refDepImage.ptr<ushort>(y, x)/5000.f;
                 //                actPoint3D(2) = *actDepthImage.ptr<ushort>(y, x)/5000.f;
 
                 refPoint3D(0) = (x - cx) * refPoint3D(2) * 1/fx;
@@ -178,12 +210,12 @@ public:
                 jacobianProj(0,2) = -(fx*trfPoint3D(0))*invTransfZ*invTransfZ;
                 jacobianProj(1,2) = -(fy*trfPoint3D(1))*invTransfZ*invTransfZ;
 
-                jacobianRt_z(0,0) = jacobianRt(2,0);
-                jacobianRt_z(0,1) = jacobianRt(2,1);
-                jacobianRt_z(0,2) = jacobianRt(2,2);
-                jacobianRt_z(0,3) = jacobianRt(2,3);
-                jacobianRt_z(0,4) = jacobianRt(2,4);
-                jacobianRt_z(0,5) = jacobianRt(2,5);
+//                jacobianRt_z(0,0) = jacobianRt(2,0);
+//                jacobianRt_z(0,1) = jacobianRt(2,1);
+//                jacobianRt_z(0,2) = jacobianRt(2,2);
+//                jacobianRt_z(0,3) = jacobianRt(2,3);
+//                jacobianRt_z(0,4) = jacobianRt(2,4);
+//                jacobianRt_z(0,5) = jacobianRt(2,5);
 
                 jacobianDepth = gradPixDepth * jacobianProj * jacobianRt;// - jacobianRt_z;
                 jacobianIntensity = gradPixIntensity * jacobianProj * jacobianRt;
@@ -197,19 +229,20 @@ public:
 
                 //Checks if this pixel projects inside of the source image
                 if((transfR_int >= 0 && transfR_int < nRows) & (transfC_int >= 0 && transfC_int < nCols)) {
-                    double pixInt1 = *(refIntensityImage.ptr<uchar>(y, x))/255.f;
+                    double pixInt1 = *(refIntImage.ptr<uchar>(y, x))/255.f;
                     double pixInt2 = *(actIntImage.ptr<uchar>(transfR_int, transfC_int))/255.f;
-                    double pixDep1 = *(refDepthImage.ptr<ushort>(y, x))/5000.f;
+                    double pixDep1 = *(refDepImage.ptr<ushort>(y, x))/5000.f;
                     double pixDep2 = *(actDepImage.ptr<ushort>(transfR_int, transfC_int))/5000.f;
 
                     //Assign the pixel residual and jacobian to its corresponding row
                     uint i = nCols * y + x;
 
                     //Residual of the pixel
+                    double temp = angles.at<double>(transfR_int, transfC_int);
                     double dDep = pixDep2 - pixDep1;
                     double dInt = pixInt2 - pixInt1;
-                    double wInt = 1;
-                    double wDep = level < 1 ? 0 : 1;
+                    double wInt = temp;
+                    double wDep = level < 1 ? 0 : temp;
 
                     jacobians(i,0)  = wDep * jacobianDepth(0,0);
                     jacobians(i,1)  = wDep * jacobianDepth(0,1);
@@ -225,7 +258,7 @@ public:
                     jacobians(i*2,5) = wInt * jacobianIntensity(0,5);
 
 
-                    thisSum += dDep * dDep + dInt * dInt;
+//                    thisSum += dDep * dDep + dInt * dInt;
                     residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep;
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt;
                     residualImage.at<double>(transfR_int, transfC_int) = wInt * dInt;
@@ -303,28 +336,6 @@ public:
 
         this->actualPoseVector6D.setZero(6);
         int iteratLevel[] = { 5, 5, 7 };
-
-        Mat K = (Mat_<double>(3, 3) << intrinsecs.GetFocalLength().first,
-                 0, intrinsecs.GetPrincipalPoint().first,
-                 0, intrinsecs.GetFocalLength().second,
-                 intrinsecs.GetPrincipalPoint().second,
-                 0, 0, 1);
-
-        //---- NORMALS ----
-
-        Mat normals;
-        RgbdNormals normalComp = RgbdNormals(refDepth.rows, refDepth.cols, CV_64F, K, 5,
-                                 RgbdNormals::RGBD_NORMALS_METHOD_FALS);
-        Mat points3d;
-        depthTo3d(refDepth, K, points3d);
-        normalComp(points3d, normals);
-        cv::Vec3f camVec(0, 0, -1);
-        // Split the image into different channels
-        vector<Mat> rgbChannels(3);
-        split(src, rgbChannels);
-        imshow("normais", normals);
-
-        //---- NORMALS ----
 
         for (int l = 2; l >= 0; l--) {
             int level = pow(2, l);

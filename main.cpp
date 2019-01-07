@@ -44,14 +44,24 @@ int main(int argc, char *argv[]){
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
-    Visualizer imgVis;
-    imgVis.CreateVisualizerWindow("Image", 640, 480);
-    Visualizer vis;
-    vis.CreateVisualizerWindow("Visualization", 640, 480);
-    vis.GetRenderOption().point_size_ = 1;
-    vis.GetViewControl().SetViewMatrices(initCam);
+//    Visualizer imgVis;
+//    imgVis.CreateVisualizerWindow("Image", 640, 480);
+    int initFrame = 20;
+    int finalFrame = 100;
 
-    for (int i = 60; i < depthFiles.size()-1; i++) {
+    shared_ptr<PointCloud> pointCloud = std::make_shared<PointCloud>();
+    shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
+
+    for (int i = initFrame; i < depthFiles.size()-1; i++) {
+
+        Visualizer vis;
+        vis.CreateVisualizerWindow("Visualization", 640, 480);
+        vis.GetRenderOption().point_size_ = 1;
+        vis.GetViewControl().SetViewMatrices(initCam);
+        vis.AddGeometry({pointCloud});
+        vis.UpdateGeometry();
+        vis.UpdateRender();
+        vis.PollEvents();
 
         string depthPath1 = datasetFolder + "depth/" + depthFiles[i];
         string rgbPath1 = datasetFolder + "rgb/" + rgbFiles[i];
@@ -74,24 +84,25 @@ int main(int argc, char *argv[]){
 
         //Visualization
         shared_ptr<RGBDImage> rgbdImage;
-        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(), cameraIntrisecs);
+        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(), cameraIntrisecs, 4.5);
 
         shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, cameraIntrisecs, initCam);
         pcd->Transform(transf);
-//        pcd = VoxelDownSample(*pcd, 0.005);
+        *pointCloud = *pointCloud + *pcd;
+//        pointCloud = VoxelDownSample(*pointCloud, 0.005);
 //        pcd = get<0>(RemoveRadiusOutliers(*pcd, 1, 0.01));
 
         aligner.getPoseTransform(gray2, depth2, gray1, depth1);
         transf = transf * aligner.getMatrixRtFromPose6D(aligner.getPose6D());
 
 //        tsdf.Integrate(*rgbdImage, cameraIntrisecs, transf.inverse());
-//        shared_ptr<TriangleMesh> pcd = tsdf.ExtractTriangleMesh();
-//        pcd->ComputeTriangleNormals();
+//        mesh = tsdf.ExtractTriangleMesh();
+//        mesh->ComputeTriangleNormals();
 
-        vis.AddGeometry({pcd});        
+        vis.AddGeometry({pointCloud});
         vis.UpdateGeometry();
         vis.UpdateRender();
-        vis.PollEvents();        
+        vis.PollEvents();
 
 //        shared_ptr<Image> depth = vis.CaptureDepthFloatBuffer();
 //        imgVis.AddGeometry({depth});
@@ -100,14 +111,15 @@ int main(int argc, char *argv[]){
 //        imgVis.PollEvents();
         cerr << "Frame : " << i << endl;
         char key = waitKey(0);
-        if(i == 65 || key == 'p'){
+        if(i == finalFrame || key == 'p'){
             vis.Run();
+            vis.PollEvents();
+            vis.DestroyVisualizerWindow();
         }
         if(key == 27){
             break;
         }        
     }
-    vis.DestroyVisualizerWindow();
 
     return 0;
 }
