@@ -39,14 +39,14 @@ int main(int argc, char *argv[]){
 
     Aligner aligner(cameraIntrisecs);
 
-    string datasetFolder = "/Users/thiago/RGBDOdometry/build/rgbd_dataset_freiburg1_plant/";
+    string datasetFolder = "/Users/thiago/RGBDOdometry/build/rgbd_dataset_freiburg1_360/";
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
 //    Visualizer imgVis;
 //    imgVis.CreateVisualizerWindow("Image", 640, 480);
-    int initFrame = 20;
+    int initFrame = 10;
     int finalFrame = 100;
 
     shared_ptr<PointCloud> pointCloud = std::make_shared<PointCloud>();
@@ -70,27 +70,27 @@ int main(int argc, char *argv[]){
         Mat depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
         Mat rgb1 = imread(rgbPath1);
         Mat depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
-        Mat rgb2 = imread(rgbPath2);
+        Mat rgb2 = imread(rgbPath2);        
 
         Mat gray1;
         Mat gray2;
         cvtColor(rgb1, gray1, CV_BGR2GRAY);
         cvtColor(rgb2, gray2, CV_BGR2GRAY);
 
-        imshow("rgb1", rgb1);
-        imshow("rgb2", rgb2);
-        imshow("depth1", depth1);
-        imshow("depth2", depth2);
+        imshow("rgb1", gray2);
+        imshow("rgb2", gray1);
+        imshow("depth1", depth2);
+        imshow("depth2", depth1);
 
         //Visualization
         shared_ptr<RGBDImage> rgbdImage;
-        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(), cameraIntrisecs, 4.5);
+        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(), cameraIntrisecs, 3);
 
         shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, cameraIntrisecs, initCam);
         pcd->Transform(transf);
-        *pointCloud = *pointCloud + *pcd;
-//        pointCloud = VoxelDownSample(*pointCloud, 0.005);
-//        pcd = get<0>(RemoveRadiusOutliers(*pcd, 1, 0.01));
+        *pointCloud = *pointCloud + *pcd;        
+//        pointCloud = VoxelDownSample(*pointCloud, 0.001);
+//        pointCloud = get<0>(RemoveRadiusOutliers(*pointCloud, 1, 0.01));
 
         aligner.getPoseTransform(gray2, depth2, gray1, depth1);
         transf = transf * aligner.getMatrixRtFromPose6D(aligner.getPose6D());
@@ -110,11 +110,17 @@ int main(int argc, char *argv[]){
 //        imgVis.UpdateRender();
 //        imgVis.PollEvents();
         cerr << "Frame : " << i << endl;
-        char key = waitKey(0);
+        char key = waitKey(100);
         if(i == finalFrame || key == 'p'){
+            vis.UpdateGeometry();
             vis.Run();
             vis.PollEvents();
             vis.DestroyVisualizerWindow();
+            do {
+                key = waitKey(0);
+                if(key == 'o') break;
+            }
+            while(key == 'p');
         }
         if(key == 27){
             break;

@@ -15,7 +15,7 @@ using namespace std;
 
 shared_ptr<RGBDImage> ReadRGBDImage(
         const char* color_filename, const char* depth_filename,
-        const PinholeCameraIntrinsic &intrinsic, int depth_trunc = 5.0)
+        const PinholeCameraIntrinsic &intrinsic, double depth_trunc = 5.0)
 {
     double depth_scale = 5000.0;
     bool convert_rgb_to_intensity = false;
