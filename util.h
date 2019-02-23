@@ -8,21 +8,25 @@
 #include <IO/IO.h>
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/rgbd.hpp>
+#include <opencv2/highgui.hpp>
 
 using namespace open3d;
 using namespace cv;
 using namespace std;
+using namespace rgbd;
 
 shared_ptr<RGBDImage> ReadRGBDImage(
-        const char* color_filename, const char* depth_filename,
-        const PinholeCameraIntrinsic &intrinsic, double depth_trunc = 5.0)
+        const char* colorFilename, const char* depthFilename,
+        const PinholeCameraIntrinsic &intrinsic, double depthTrunc,
+        Mat *depthMask = NULL)
 {
-    double depth_scale = 5000.0;
-    bool convert_rgb_to_intensity = false;
+    double depthScale = 5000.0;
+    bool convertRgbToIntensity = false;
 
     Image color, depth;
-    ReadImage(color_filename, color);
-    ReadImage(depth_filename, depth);
+    ReadImage(colorFilename, color);
+    ReadImage(depthFilename, depth);
 
     PrintDebug("Reading RGBD image : \n");
     PrintDebug("     Color : %d x %d x %d (%d bits per channel)\n",
@@ -32,33 +36,73 @@ shared_ptr<RGBDImage> ReadRGBDImage(
                depth.width_, depth.height_,
                depth.num_of_channels_, depth.bytes_per_channel_ * 8);
 
+    uint8_t *data = depth.data_.data();
+    if(depthMask != NULL){
+        depthMask->forEach<double>(
+                    [data, depthMask](double &pixel, const int *position) -> void
+        {
+            if(pixel == 0){
+                uint8_t *pData = &(data[(position[0] * depthMask->cols + position[1]) * 2]);
+                *pData++ = 0;
+                *pData = 0;
+            }
+        }
+        );
+    }
     std::shared_ptr<RGBDImage> rgbd_image =
-            CreateRGBDImageFromColorAndDepth(color, depth, depth_scale, depth_trunc, convert_rgb_to_intensity);
+            CreateRGBDImageFromColorAndDepth(color, depth, depthScale, depthTrunc,
+                                             convertRgbToIntensity);
+
     return rgbd_image;
 }
 
-Mat normalsFromDepth(Mat &depth){
+// Level comes in reverse order 2 > 1 > 0
+Mat getMaskOfNormalsFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsecs, int level,
+                              bool dilateBorders = false){
 
-    Mat normals(depth.size(), CV_32FC3);
-    for(int x = 1; x < depth.cols-1; ++x){
-        for(int y = 1; y < depth.rows-1; ++y){
-            // use float instead of double otherwise you will not get the correct result
-            // check my updates in the original post. I have not figure out yet why this
-            // is happening.
-            float x1 = depth.at<ushort>(y, x+1);
-            float x2 = depth.at<ushort>(y, x-1);
-            float y1 = depth.at<ushort>(y+1, x);
-            float y2 = depth.at<ushort>(y-1, x);
+    double scaleFactor = 1.0 / pow(2, level);
+    double thresNormals[] = { 0.6, 0.6, 0.6 };
+    double nearbNormals[] = { 7, 7, 3};
 
-            float dzdx = x1 - x2;
-            float dzdy = y1 - y2;
+    Mat K = (Mat_<double>(3, 3) << intrinsecs.GetFocalLength().first * scaleFactor,
+             0, intrinsecs.GetPrincipalPoint().first * scaleFactor,
+             0, intrinsecs.GetFocalLength().second * scaleFactor,
+             intrinsecs.GetPrincipalPoint().second * scaleFactor,
+             0, 0, 1);
 
-            Vec3f d(-dzdy, -dzdx, 1);
-            Vec3f c(0,0,1);
-            Vec3f n = normalize(d);
-            normals.at<Vec3f>(y, x) = n;
-        }
+    RgbdNormals normalComp = RgbdNormals(depth.rows, depth.cols,
+                                         CV_64F, K, nearbNormals[level],
+                                         RgbdNormals::RGBD_NORMALS_METHOD_FALS);
+    Mat tempDepth, normals;
+    Mat refPoints3d;
+    depth.convertTo(tempDepth, CV_16UC1, 5000);
+    //    blur(tempDepth, tempDepth, Size(3,3));
+    depthTo3d(tempDepth, K, refPoints3d);
+    normalComp(refPoints3d, normals);
+
+    Mat filtered = Mat::zeros(normals.rows, normals.cols, CV_64FC1);
+    Vec3d camAxis (0, 0, -1);
+    normals.forEach<Vec3d>(
+        [&filtered, &camAxis, &thresNormals, &level](Vec3d &pixel, const int *pos) -> void
+    {
+        double uv = isnan(pixel[0]) ? 0 : pixel.dot(camAxis);
+        filtered.at<double>(pos[0], pos[1]) = uv > thresNormals[level] ? 1 : 0;
     }
-    return normals;
+    );
+    //    for (int r = 0; r < normals.rows; ++r) {
+    //        for (int c = 0; c < normals.cols; ++c) {
+    //            Vec3d pixel = normals.at<Vec3d>(r, c);
+    //            double uv = isnan(pixel[0]) ? 0 : pixel.dot(camAxis);
+    ////            double uv = pixel.dot(camAxis);
+    //            filtered.at<double>(r, c) = uv > thresNormals[level] ? 1 : 0;
+    //        }
+    //    }
+    if (dilateBorders){
+        Mat element = getStructuringElement( MORPH_RECT,
+                                             Size( 2*3 + 1, 2*3+1 ),
+                                             Point( 3, 3 ) );
+        erode( filtered, filtered, element );
+    }
+    return filtered;
 }
 #endif
