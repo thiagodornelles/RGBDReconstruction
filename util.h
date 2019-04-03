@@ -58,10 +58,9 @@ shared_ptr<RGBDImage> ReadRGBDImage(
 
 // Level comes in reverse order 2 > 1 > 0
 Mat getMaskOfNormalsFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsecs, int level,
-                              bool dilateBorders = false){
+                              bool dilateBorders = false, double angleFilter = 1.222){
 
     double scaleFactor = 1.0 / pow(2, level);
-    double thresNormals[] = { 0.6, 0.6, 0.6 };
     double nearbNormals[] = { 7, 7, 3};
 
     Mat K = (Mat_<double>(3, 3) << intrinsecs.GetFocalLength().first * scaleFactor,
@@ -76,33 +75,73 @@ Mat getMaskOfNormalsFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsecs, int
     Mat tempDepth, normals;
     Mat refPoints3d;
     depth.convertTo(tempDepth, CV_16UC1, 5000);
-    //    blur(tempDepth, tempDepth, Size(3,3));
+//    blur(tempDepth, tempDepth, Size(3,3));
     depthTo3d(tempDepth, K, refPoints3d);
     normalComp(refPoints3d, normals);
 
     Mat filtered = Mat::zeros(normals.rows, normals.cols, CV_64FC1);
     Vec3d camAxis (0, 0, -1);
     normals.forEach<Vec3d>(
-        [&filtered, &camAxis, &thresNormals, &level](Vec3d &pixel, const int *pos) -> void
+                [&filtered, &camAxis, &angleFilter, &level](Vec3d &pixel, const int *pos) -> void
     {
         double uv = isnan(pixel[0]) ? 0 : pixel.dot(camAxis);
-        filtered.at<double>(pos[0], pos[1]) = uv > thresNormals[level] ? 1 : 0;
+        uv = cos(acos(uv) * angleFilter);
+        filtered.at<double>(pos[0], pos[1]) = uv < 0 ? 0 : uv;
     }
     );
-    //    for (int r = 0; r < normals.rows; ++r) {
-    //        for (int c = 0; c < normals.cols; ++c) {
-    //            Vec3d pixel = normals.at<Vec3d>(r, c);
-    //            double uv = isnan(pixel[0]) ? 0 : pixel.dot(camAxis);
-    ////            double uv = pixel.dot(camAxis);
-    //            filtered.at<double>(r, c) = uv > thresNormals[level] ? 1 : 0;
-    //        }
-    //    }
+
     if (dilateBorders){
-        Mat element = getStructuringElement( MORPH_RECT,
+        Mat element = getStructuringElement( MORPH_CROSS,
                                              Size( 2*3 + 1, 2*3+1 ),
                                              Point( 3, 3 ) );
         erode( filtered, filtered, element );
     }
     return filtered;
 }
+
+Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsecs){
+
+    double nPoints = depthMap.cols * depthMap.rows;
+    double cx = intrinsecs.GetPrincipalPoint().first;
+    double cy = intrinsecs.GetPrincipalPoint().second;
+    double fx = intrinsecs.GetFocalLength().first;
+    double fy = intrinsecs.GetFocalLength().second;
+
+    Eigen::Vector4d refPoint3d;
+    Mat projected = Mat::zeros(depthMap.rows, depthMap.cols, CV_64FC1);
+
+    for (int i = 0; i < nPoints; ++i) {
+        int py = i / depthMap.cols;
+        int px = i % depthMap.cols;        
+        double z = *depthMap.ptr<double>(py, px);
+        if(z > maxDist) continue;
+        double x = (px - cx) * z * 1/fx;
+        double y = (py - cy) * z * 1/fy;
+
+        refPoint3d(0) = x;
+        refPoint3d(1) = y;
+        refPoint3d(2) = z;
+        refPoint3d(3) = 1;
+
+        refPoint3d = Rt * refPoint3d;
+        double invTransfZ = 1.0 / refPoint3d(2);
+
+        //******* BEGIN Projection of PointCloud on the image plane ********
+        double transfC = (refPoint3d(0) * fx) * invTransfZ + cx;
+        double transfR = (refPoint3d(1) * fy) * invTransfZ + cy;
+        int transfR_int = static_cast<int>(round(transfR));
+        int transfC_int = static_cast<int>(round(transfC));
+        //******* END Projection of PointCloud on the image plane ********
+
+        //Checks if this pixel projects inside of the source image
+        if((transfR_int >= 0 && transfR_int < depthMap.rows) &&
+                (transfC_int >= 0 && transfC_int < depthMap.cols) &&
+                refPoint3d(2) > 0.1 && refPoint3d(2) < maxDist) {
+            *projected.ptr<double>(transfR_int, transfC) = refPoint3d(2);
+        }
+
+    }
+    return projected;
+}
+
 #endif
