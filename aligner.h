@@ -76,16 +76,20 @@ public:
 
     void computeResidualsAndJacobians(Mat &refIntImage, Mat &refDepImage,
                                       Mat &actIntImage, Mat &actDepImage,
-                                      MatrixXd &residuals, MatrixXd &jacobians,                                      
+                                      MatrixXd &residuals, MatrixXd &jacobians,
                                       int level, bool color = true, bool depth = true)
-    {        
+    {
         double scaleFactor = 1.0 / pow(2, level);
         //level comes in reverse order 2 > 1 > 0
         double intScales[] = { 0.0001, 0.0001, 0.0001 };
         double depScales[] = { 0.001, 0.001, 0.001 };
         double gradLevels[] = {0.0004, 0.0004, 0.0009};
         Mat residualImage = Mat::zeros(refIntImage.rows * 2, refIntImage.cols, CV_64FC1);
-        Mat actIntDerivX, actIntDerivY, actDepDerivX, actDepDerivY;
+        Mat actIntDerivX = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
+        Mat actIntDerivY = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
+        Mat actDepDerivX = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
+        Mat actDepDerivY = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
+
         Scharr(actIntImage, actIntDerivX, CV_64F, 1, 0, intScales[level], 0.0, cv::BORDER_DEFAULT);
         Scharr(actIntImage, actIntDerivY, CV_64F, 0, 1, intScales[level], 0.0, cv::BORDER_DEFAULT);
         Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, depScales[level], 0.0, cv::BORDER_DEFAULT);
@@ -95,9 +99,9 @@ public:
         imshow("wDep", filteredNormals);
 
         //Extrinsecs
-//        double x = bestPoseVector6D(0);
-//        double y = bestPoseVector6D(1);
-//        double z = bestPoseVector6D(2);
+        //        double x = bestPoseVector6D(0);
+        //        double y = bestPoseVector6D(1);
+        //        double z = bestPoseVector6D(2);
         double yaw = bestPoseVector6D(3);
         double pitch = bestPoseVector6D(4);
         double roll = bestPoseVector6D(5);
@@ -145,11 +149,11 @@ public:
                 double gradY = gradPixIntensity(0,1);
 
                 double wInt = 1;
-//                double wInt = (gradX * gradX + gradY * gradY) > gradLevels[level] ? 1 : 0;
-//                if( wInt == 0 ){
-//                    count++;
-//                    continue;
-//                }
+                //                double wInt = (gradX * gradX + gradY * gradY) > gradLevels[level] ? 1 : 0;
+                //                if( wInt == 0 ){
+                //                    count++;
+                //                    continue;
+                //                }
 
                 //******* BEGIN Unprojection of DepthMap ********
                 Vector4d refPoint3D;
@@ -240,14 +244,14 @@ public:
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
                     double dDep = pixDep2 - pixDep1;
-                    dDep = abs(dDep) > 0.6 ? 0 : dDep;
+                    dDep = abs(dDep) > maxDist ? 0 : dDep;
                     dDep = pixDep1 == 0 ? 0 : dDep;
                     dDep = pixDep2 == 0 ? 0 : dDep;
                     double wDep = *filteredNormals.ptr<double>(transfR_int, transfC_int);
-
-                    double v = 0.2f;
-                    double wd = (v + 0.f) / (0.05 + dDep*dDep);
-                    wDep *= sqrt(wd);
+                    //                    double v = 0.5f;
+                    //                    double wd = (v + 1.f) / (v + dDep*dDep);
+                    //                    wDep *= wd;
+                    //                    Int *= wd;
 
                     jacobians(i,0)   = wDep * jacobianDepth(0,0);
                     jacobians(i,1)   = wDep * jacobianDepth(0,1);
@@ -274,18 +278,18 @@ public:
 
         if (level == 0){
             resize(residualImage, residualImage, Size(residualImage.cols/2, residualImage.rows/2));
-//            Matrix4d Id = Matrix4d::Identity();
-//            Mat m1 = transfAndProject(refDepImage, 1, Rt, intrinsecs);
-//            Mat m2 = transfAndProject(actDepImage, 1, Id, intrinsecs);
-//            Mat m3;
-//            m3 = m2 - m1;
-//            threshold(m3, m3, 0.002, 0, THRESH_TOZERO_INV);
-//            Scalar mean, stddev;
-//            meanStdDev(residualImage, mean, stddev);
-//            cerr << "Mean " << mean[0] << " Stddev " << stddev[0] << endl;
-//            m3 *= 500;
-//            imshow("difference", m3);
-//            waitKey(1);
+            Matrix4d Id = Matrix4d::Identity();
+            Mat m1 = transfAndProject(refDepImage, 1, Rt, intrinsecs);
+            Mat m2 = transfAndProject(actDepImage, 1, Id, intrinsecs);
+            Mat m3;
+            m3 = m2 - m1;
+            threshold(m3, m3, 0.001, 0, THRESH_TOZERO_INV);
+            //            Scalar mean, stddev;
+            //            meanStdDev(residualImage, mean, stddev);
+            //            cerr << "Mean " << mean[0] << " Stddev " << stddev[0] << endl;
+            m3 *= 500;
+            imshow("difference", m3);
+            waitKey(1);
         }
 
         imshow("Residual", residualImage);
@@ -297,7 +301,7 @@ public:
             cerr << "best pose summation: " << sum << endl;
             bestPoseVector6D = actualPoseVector6D;
         }
-//        cerr << "Count " << count / (double)(nCols * nRows) << " %" << endl;
+        //        cerr << "Count " << count / (double)(nCols * nRows) << " %" << endl;
     }
 
     //*********** Compute the rigid transformation matrix from the poseVector6D ************
@@ -337,11 +341,12 @@ public:
     bool doSingleIteration(MatrixXd &residuals, MatrixXd &jacobians,
                            double lambda, double threshold){
 
-        double chi = residuals.squaredNorm();        
-        if(chi > threshold){
-            cerr << "Escalando o erro " << endl;
-            residuals *= sqrt(threshold/chi);
-        }
+        //        double chi = residuals.squaredNorm();
+        //        cerr << "chi squared " << chi << endl;
+        //        if(chi > threshold){
+        //            cerr << "Escalando o erro " << endl;
+        //            residuals *= sqrt(threshold/chi);
+        //        }
         MatrixXd gradients = jacobians.transpose() * residuals;
         actualPoseVector6D -= lambda * ((jacobians.transpose()*jacobians).inverse() * gradients);
         //Gets best transform until now
@@ -397,13 +402,13 @@ public:
             int rows = refGray.rows;
             int cols = refGray.cols;
 
-            for (int i = 0; i < 5; ++i) {
+            for (int i = 0; i < 10; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
                                              residuals, jacobians, 0, false, true);
-                doSingleIteration(residuals, jacobians, 800, 200);
+                doSingleIteration(residuals, jacobians, 200, 200);
             }
         }
     }

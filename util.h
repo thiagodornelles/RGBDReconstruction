@@ -99,6 +99,44 @@ Mat getMaskOfNormalsFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsecs, int
     return filtered;
 }
 
+Mat projectPointCloud(PointCloud pcd, double maxDist, Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsecs){
+
+    double cx = intrinsecs.GetPrincipalPoint().first;
+    double cy = intrinsecs.GetPrincipalPoint().second;
+    double fx = intrinsecs.GetFocalLength().first;
+    double fy = intrinsecs.GetFocalLength().second;
+    Mat projected = Mat::zeros(480, 640, CV_16UC1);
+
+    for (size_t i = 0; i < pcd.points_.size(); i++) {
+
+        Eigen::Vector3d pcdPoint = pcd.points_[i];
+        Eigen::Vector4d refPoint3d;
+        refPoint3d(0) = pcdPoint(0);
+        refPoint3d(1) = pcdPoint(1);
+        refPoint3d(2) = pcdPoint(2);
+        refPoint3d(3) = 1;
+        refPoint3d = Rt * refPoint3d;
+        double invTransfZ = 1.0 / refPoint3d(2);
+
+        //******* BEGIN Projection of PointCloud on the image plane ********
+        double transfC = (refPoint3d(0) * fx) * invTransfZ + cx;
+        double transfR = (refPoint3d(1) * fy) * invTransfZ + cy;
+        int transfR_int = static_cast<int>(round(transfR));
+        int transfC_int = static_cast<int>(round(transfC));
+        //******* END Projection of PointCloud on the image plane ********
+
+        //Checks if this pixel projects inside of the image
+        if((transfR_int >= 0 && transfR_int < 480) &&
+                (transfC_int >= 0 && transfC_int < 640) &&
+                refPoint3d(2) > 0.1 && refPoint3d(2) < maxDist) {
+            if(*projected.ptr<short>(transfR_int, transfC) < refPoint3d(2) && refPoint3d(2) > 0)
+                *projected.ptr<short>(transfR_int, transfC) = refPoint3d(2) * 5000;
+        }
+    }
+
+    return projected;
+}
+
 Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsecs){
 
     double nPoints = depthMap.cols * depthMap.rows;
