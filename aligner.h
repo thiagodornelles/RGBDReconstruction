@@ -95,7 +95,7 @@ public:
         Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, depScales[level], 0.0, cv::BORDER_DEFAULT);
         Scharr(actDepImage, actDepDerivY, CV_64F, 0, 1, depScales[level], 0.0, cv::BORDER_DEFAULT);
 
-        Mat filteredNormals = getMaskOfNormalsFromDepth(actDepImage, intrinsecs, level);
+        Mat filteredNormals = getMaskOfNormalsFromDepth(actDepImage, intrinsecs, level, false, 1.3);
         imshow("wDep", filteredNormals);
 
         //Extrinsecs
@@ -137,8 +137,8 @@ public:
 
                 int y = r / refDepImage.cols;
                 int x = r % refDepImage.cols;
-                if(*refDepImage.ptr<double>(y, x) == 0)
-                    continue;
+//                if(*refDepImage.ptr<double>(y, x) == 0)
+//                    continue;
 
                 gradPixIntensity(0,0) = *actIntDerivX.ptr<double>(y, x);
                 gradPixIntensity(0,1) = *actIntDerivY.ptr<double>(y, x);
@@ -235,8 +235,8 @@ public:
                         && refPoint3D(2) > minDist && refPoint3D(2) < maxDist) {
                     double pixInt1 = *(refIntImage.ptr<uchar>(y, x))/255.f;
                     double pixInt2 = *(actIntImage.ptr<uchar>(transfR_int, transfC_int))/255.f;
-                    double pixDep1 = trfPoint3D(2) * 0.1;
-                    double pixDep2 = *(actDepImage.ptr<double>(transfR_int, transfC_int)) * 0.1;
+                    double pixDep1 = trfPoint3D(2);// * 0.1;
+                    double pixDep2 = *(actDepImage.ptr<double>(transfR_int, transfC_int));// * 0.1;
 
                     //Assign the pixel residual and jacobian to itsa corresponding row
                     uint i = nCols * y + x;
@@ -248,6 +248,7 @@ public:
                     dDep = pixDep1 == 0 ? 0 : dDep;
                     dDep = pixDep2 == 0 ? 0 : dDep;
                     double wDep = *filteredNormals.ptr<double>(transfR_int, transfC_int);
+                    //                    wDep = wDep > 0.8 ? wDep : 0;
                     //                    double v = 0.5f;
                     //                    double wd = (v + 1.f) / (v + dDep*dDep);
                     //                    wDep *= wd;
@@ -269,7 +270,7 @@ public:
                     residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep * depth;
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt * color;
 
-                    residualImage.at<double>(transfR_int, transfC_int) = wInt * dInt * color;
+                    residualImage.at<double>(transfR_int, transfC_int) = 10 * wInt * dInt * color;
                     residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = 500 * wDep * dDep * depth;
                 }
             }
@@ -278,18 +279,18 @@ public:
 
         if (level == 0){
             resize(residualImage, residualImage, Size(residualImage.cols/2, residualImage.rows/2));
-            Matrix4d Id = Matrix4d::Identity();
-            Mat m1 = transfAndProject(refDepImage, 1, Rt, intrinsecs);
-            Mat m2 = transfAndProject(actDepImage, 1, Id, intrinsecs);
-            Mat m3;
-            m3 = m2 - m1;
-            threshold(m3, m3, 0.001, 0, THRESH_TOZERO_INV);
-            //            Scalar mean, stddev;
-            //            meanStdDev(residualImage, mean, stddev);
-            //            cerr << "Mean " << mean[0] << " Stddev " << stddev[0] << endl;
-            m3 *= 500;
-            imshow("difference", m3);
-            waitKey(1);
+//            Matrix4d Id = Matrix4d::Identity();
+//            Mat m1 = transfAndProject(refDepImage, 1, Rt, intrinsecs);
+//            Mat m2 = transfAndProject(actDepImage, 1, Id, intrinsecs);
+//            Mat m3;
+//            m3 = m2 - m1;
+//            threshold(m3, m3, 0.001, 0, THRESH_TOZERO_INV);
+//            //            Scalar mean, stddev;
+//            //            meanStdDev(residualImage, mean, stddev);
+//            //            cerr << "Mean " << mean[0] << " Stddev " << stddev[0] << endl;
+//            m3 *= 500;
+//            imshow("difference", m3);
+//            waitKey(1);
         }
 
         imshow("Residual", residualImage);
@@ -348,7 +349,9 @@ public:
         //            residuals *= sqrt(threshold/chi);
         //        }
         MatrixXd gradients = jacobians.transpose() * residuals;
-        actualPoseVector6D -= lambda * ((jacobians.transpose()*jacobians).inverse() * gradients);
+        MatrixXd hessian = jacobians.transpose() * jacobians;
+        actualPoseVector6D -= lambda * hessian.ldlt().solve(gradients);
+//        actualPoseVector6D -= lambda * (hessian.inverse() * gradients);
         //Gets best transform until now
         double gradientNorm = gradients.norm();
         if(gradientNorm < lastGradientNorm){
@@ -407,8 +410,11 @@ public:
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
-                                             residuals, jacobians, 0, false, true);
+                                             residuals, jacobians, 0, false , true);
                 doSingleIteration(residuals, jacobians, 200, 200);
+                MatrixXd gradients = jacobians.transpose() * residuals;
+                if(gradients.norm() < 1)
+                    break;
             }
         }
     }
