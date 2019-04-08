@@ -24,7 +24,7 @@ using namespace std;
 using namespace cv;
 using namespace std::chrono;
 
-bool generateMesh = false;
+bool generateMesh = true;
 
 int main(int argc, char *argv[]){
 
@@ -42,7 +42,7 @@ int main(int argc, char *argv[]){
     Eigen::Matrix4d initCam = Eigen::Matrix4d::Identity();
 
     //Kinect 360 unprojection
-    //    PinholeCameraIntrinsic camefraIntrisecs = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
+    //    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
     //Mickey Dataset
     PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
     //CORBS
@@ -50,12 +50,13 @@ int main(int argc, char *argv[]){
 
     Aligner aligner(cameraIntrisecs);
     aligner.setDist(0.1, 0.3);
+    double maxDistProjection = 0.3;
 
     double fovX = 2 * atan(640 / (2 * cameraIntrisecs.GetFocalLength().first)) * 180.0 / CV_PI;
     double fovY = 2 * atan(480 / (2 * cameraIntrisecs.GetFocalLength().second)) * 180.0 / CV_PI;
     cerr << "FOVy " << fovY << endl;
     cerr << "FOVx " << fovX << endl;
-    //    string datasetFolder = "/media/thiago/BigStorage/Datasets/rgbd_dataset_freiburg1_plant/";
+    //    string datasetFolder = "/Users/thiago/Datasets/rgbd_dataset_freiburg1_plant/";
     string datasetFolder = "/Users/thiago/Datasets/mickey/";
     //    string datasetFolder = "/Users/thiago/Datasets/car/";
     //    string datasetFolder = "/Users/thiago/Datasets/desk/";
@@ -70,7 +71,7 @@ int main(int argc, char *argv[]){
     shared_ptr<PointCloud> pointCloud = std::make_shared<PointCloud>();
     shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
 
-    int step = 2;
+    int step = 1;
     for (int i = initFrame; i < depthFiles.size()-1; i+=step) {
 
         Visualizer vis;
@@ -126,7 +127,7 @@ int main(int argc, char *argv[]){
         Mat maskNormals = getMaskOfNormalsFromDepth(tmpDepth, cameraIntrisecs, 0, true);
 
         rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
-                                  cameraIntrisecs, aligner.maxDist, &maskNormals);
+                                  cameraIntrisecs, maxDistProjection, &maskNormals);
         //        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
         //                                  cameraIntrisecs, aligner.maxDist);
 

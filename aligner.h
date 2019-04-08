@@ -137,8 +137,8 @@ public:
 
                 int y = r / refDepImage.cols;
                 int x = r % refDepImage.cols;
-//                if(*refDepImage.ptr<double>(y, x) == 0)
-//                    continue;
+                if(*refDepImage.ptr<double>(y, x) < minDist)
+                    continue;
 
                 gradPixIntensity(0,0) = *actIntDerivX.ptr<double>(y, x);
                 gradPixIntensity(0,1) = *actIntDerivY.ptr<double>(y, x);
@@ -235,8 +235,8 @@ public:
                         && refPoint3D(2) > minDist && refPoint3D(2) < maxDist) {
                     double pixInt1 = *(refIntImage.ptr<uchar>(y, x))/255.f;
                     double pixInt2 = *(actIntImage.ptr<uchar>(transfR_int, transfC_int))/255.f;
-                    double pixDep1 = trfPoint3D(2);// * 0.1;
-                    double pixDep2 = *(actDepImage.ptr<double>(transfR_int, transfC_int));// * 0.1;
+                    double pixDep1 = trfPoint3D(2);
+                    double pixDep2 = *(actDepImage.ptr<double>(transfR_int, transfC_int));
 
                     //Assign the pixel residual and jacobian to itsa corresponding row
                     uint i = nCols * y + x;
@@ -244,7 +244,7 @@ public:
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
                     double dDep = pixDep2 - pixDep1;
-                    dDep = abs(dDep) > maxDist ? 0 : dDep;
+                    dDep = abs(dDep) > 0.6 ? 0 : dDep;
                     dDep = pixDep1 == 0 ? 0 : dDep;
                     dDep = pixDep2 == 0 ? 0 : dDep;
                     double wDep = *filteredNormals.ptr<double>(transfR_int, transfC_int);
@@ -270,7 +270,7 @@ public:
                     residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep * depth;
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt * color;
 
-                    residualImage.at<double>(transfR_int, transfC_int) = 10 * wInt * dInt * color;
+                    residualImage.at<double>(transfR_int, transfC_int) = wInt * dInt * color;
                     residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = 500 * wDep * dDep * depth;
                 }
             }
@@ -405,13 +405,13 @@ public:
             int rows = refGray.rows;
             int cols = refGray.cols;
 
-            for (int i = 0; i < 10; ++i) {
+            for (int i = 0; i < 5; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
                                              residuals, jacobians, 0, false , true);
-                doSingleIteration(residuals, jacobians, 200, 200);
+                doSingleIteration(residuals, jacobians, 500, 200);
                 MatrixXd gradients = jacobians.transpose() * residuals;
                 if(gradients.norm() < 1)
                     break;
