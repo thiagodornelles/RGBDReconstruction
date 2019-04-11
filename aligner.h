@@ -148,7 +148,7 @@ public:
                 double gradX = gradPixIntensity(0,0);
                 double gradY = gradPixIntensity(0,1);
 
-                double wInt = 1;
+                double wInt = 2;
                 //                double wInt = (gradX * gradX + gradY * gradY) > gradLevels[level] ? 1 : 0;
                 //                if( wInt == 0 ){
                 //                    count++;
@@ -371,7 +371,7 @@ public:
         Mat tempRefDepth, tempActDepth;
 
         this->actualPoseVector6D.setZero(6);
-        int iteratLevel[] = { 7, 3, 3 };
+        int iteratLevel[] = { 7, 5, 3 };
 
         for (int l = 2; l >= 0; l--) {
             cerr << "LEVEL " << l << endl;
@@ -389,7 +389,7 @@ public:
             this->sum = DBL_MAX;
             cerr << "Iniciando de:" << endl;
             cerr << getMatrixRtFromPose6D(actualPoseVector6D);
-            double lambdas[] = { 1, 1, 2 };
+            double lambdas[] = { 1, 1, 1 };
             double threshold[] = { 1000, 160, 80 };
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
@@ -405,13 +405,13 @@ public:
             int rows = refGray.rows;
             int cols = refGray.cols;
 
-            for (int i = 0; i < 5; ++i) {
+            for (int i = 0; i < 10; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
                                              residuals, jacobians, 0, false , true);
-                doSingleIteration(residuals, jacobians, 500, 200);
+                doSingleIteration(residuals, jacobians, 400, 200);
                 MatrixXd gradients = jacobians.transpose() * residuals;
                 if(gradients.norm() < 1)
                     break;

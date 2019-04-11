@@ -44,20 +44,23 @@ int main(int argc, char *argv[]){
     //Kinect 360 unprojection
     //    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
     //Mickey Dataset
-    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
+    //    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
     //CORBS
     //    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(640, 480, 468.60, 468.61, 318.27, 243.99);
+    //Kinect v2
+    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(512, 424, 363.491, 363.491, 256.496, 207.778);
 
     Aligner aligner(cameraIntrisecs);
-    aligner.setDist(0.1, 0.3);
-    double maxDistProjection = 0.3;
+    aligner.setDist(0.1, 4);
+    double maxDistProjection = 4;
 
     double fovX = 2 * atan(640 / (2 * cameraIntrisecs.GetFocalLength().first)) * 180.0 / CV_PI;
     double fovY = 2 * atan(480 / (2 * cameraIntrisecs.GetFocalLength().second)) * 180.0 / CV_PI;
     cerr << "FOVy " << fovY << endl;
     cerr << "FOVx " << fovX << endl;
+    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
     //    string datasetFolder = "/Users/thiago/Datasets/rgbd_dataset_freiburg1_plant/";
-    string datasetFolder = "/Users/thiago/Datasets/mickey/";
+    //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
     //    string datasetFolder = "/Users/thiago/Datasets/car/";
     //    string datasetFolder = "/Users/thiago/Datasets/desk/";
     //    string datasetFolder = "/Users/thiago/Datasets/sculp/";
@@ -65,7 +68,7 @@ int main(int argc, char *argv[]){
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
-    int initFrame = 100;
+    int initFrame = 0;
     int finalFrame = 6000;
 
     shared_ptr<PointCloud> pointCloud = std::make_shared<PointCloud>();
@@ -141,7 +144,7 @@ int main(int argc, char *argv[]){
             pointCloud = VoxelDownSample(*pointCloud, 0.0004);
         }
 
-
+        //************ ALIGNMENT ************//
         auto start = high_resolution_clock::now();
         aligner.getPoseTransform(gray1, depth1, gray2, depth2, true);
         auto stop = high_resolution_clock::now();
