@@ -95,7 +95,7 @@ public:
         Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, depScales[level], 0.0, cv::BORDER_DEFAULT);
         Scharr(actDepImage, actDepDerivY, CV_64F, 0, 1, depScales[level], 0.0, cv::BORDER_DEFAULT);
 
-        Mat filteredNormals = getMaskOfNormalsFromDepth(actDepImage, intrinsecs, level, false, 1.3);
+        Mat filteredNormals = getMaskOfNormalsFromDepth(actDepImage, intrinsecs, level, true, 1.3);
         imshow("wDep", filteredNormals);
 
         //Extrinsecs
@@ -148,7 +148,7 @@ public:
                 double gradX = gradPixIntensity(0,0);
                 double gradY = gradPixIntensity(0,1);
 
-                double wInt = 2;
+                double wInt = 1;
                 //                double wInt = (gradX * gradX + gradY * gradY) > gradLevels[level] ? 1 : 0;
                 //                if( wInt == 0 ){
                 //                    count++;
@@ -244,7 +244,7 @@ public:
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
                     double dDep = pixDep2 - pixDep1;
-                    dDep = abs(dDep) > 0.6 ? 0 : dDep;
+                    dDep = abs(dDep) > 0.4 ? 0 : dDep;
                     dDep = pixDep1 == 0 ? 0 : dDep;
                     dDep = pixDep2 == 0 ? 0 : dDep;
                     double wDep = *filteredNormals.ptr<double>(transfR_int, transfC_int);
@@ -270,7 +270,7 @@ public:
                     residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep * depth;
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt * color;
 
-                    residualImage.at<double>(transfR_int, transfC_int) = wInt * dInt * color;
+                    residualImage.at<double>(transfR_int, transfC_int) = 10 * wInt * dInt * color;
                     residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = 500 * wDep * dDep * depth;
                 }
             }
@@ -389,7 +389,7 @@ public:
             this->sum = DBL_MAX;
             cerr << "Iniciando de:" << endl;
             cerr << getMatrixRtFromPose6D(actualPoseVector6D);
-            double lambdas[] = { 1, 1, 1 };
+            double lambdas[] = { 0.5, 1, 1 };
             double threshold[] = { 1000, 160, 80 };
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
@@ -411,10 +411,8 @@ public:
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
                                              residuals, jacobians, 0, false , true);
-                doSingleIteration(residuals, jacobians, 400, 200);
+                doSingleIteration(residuals, jacobians, 2000, 200);
                 MatrixXd gradients = jacobians.transpose() * residuals;
-                if(gradients.norm() < 1)
-                    break;
             }
         }
     }

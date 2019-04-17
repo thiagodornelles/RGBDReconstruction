@@ -99,17 +99,28 @@ Mat getMaskOfNormalsFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsecs, int
     return filtered;
 }
 
-Mat projectPointCloud(PointCloud pcd, double maxDist, Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsecs){
+void projectPointCloud(PointCloud pointCloud, double maxDist,
+                       Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsecs,
+                       Mat *depthMap, Mat *indexMap = NULL){
+
+    int width = intrinsecs.width_;
+    int height = intrinsecs.height_;
 
     double cx = intrinsecs.GetPrincipalPoint().first;
     double cy = intrinsecs.GetPrincipalPoint().second;
     double fx = intrinsecs.GetFocalLength().first;
     double fy = intrinsecs.GetFocalLength().second;
-    Mat projected = Mat::zeros(480, 640, CV_16UC1);
+    depthMap = new Mat(height, width, CV_16UC1);
+    depthMap->setTo(0);
 
-    for (size_t i = 0; i < pcd.points_.size(); i++) {
+    if(indexMap){
+        indexMap = new Mat(height, width, CV_64FC1);
+        indexMap->setTo(-1);
+    }
 
-        Eigen::Vector3d pcdPoint = pcd.points_[i];
+    for (size_t i = 0; i < pointCloud.points_.size(); i++) {
+
+        Eigen::Vector3d pcdPoint = pointCloud.points_[i];
         Eigen::Vector4d refPoint3d;
         refPoint3d(0) = pcdPoint(0);
         refPoint3d(1) = pcdPoint(1);
@@ -126,15 +137,18 @@ Mat projectPointCloud(PointCloud pcd, double maxDist, Eigen::Matrix4d Rt, Pinhol
         //******* END Projection of PointCloud on the image plane ********
 
         //Checks if this pixel projects inside of the image
-        if((transfR_int >= 0 && transfR_int < 480) &&
-                (transfC_int >= 0 && transfC_int < 640) &&
-                refPoint3d(2) > 0.1 && refPoint3d(2) < maxDist) {
-            if(*projected.ptr<short>(transfR_int, transfC) < refPoint3d(2) && refPoint3d(2) > 0)
-                *projected.ptr<short>(transfR_int, transfC) = refPoint3d(2) * 5000;
+        if((transfR_int >= 0 && transfR_int < height) &&
+           (transfC_int >= 0 && transfC_int < width) &&
+           refPoint3d(2) > 0.1 && refPoint3d(2) < maxDist) {
+
+            if(*depthMap->ptr<short>(transfR_int, transfC_int) < refPoint3d(2) && refPoint3d(2) > 0){
+                *depthMap->ptr<short>(transfR_int, transfC_int) = refPoint3d(2) * 5000;
+                if(indexMap){
+                    *indexMap->ptr<double>(transfR_int, transfC) = i;
+                }
+            }
         }
     }
-
-    return projected;
 }
 
 Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsecs){
@@ -182,4 +196,33 @@ Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeC
     return projected;
 }
 
+void merge(shared_ptr<PointCloud> model, shared_ptr<PointCloud> lastFrame, PinholeCameraIntrinsic intrinsecs){
+
+    if(model->IsEmpty()){
+        *model = *model + *lastFrame;
+        return;
+    }
+
+    Eigen::Matrix4d id = Eigen::Matrix4d::Identity();
+    Mat *depth1, *depth2;
+    Mat *index1, *index2;
+    projectPointCloud(*model, 5, id, intrinsecs, depth1, index1);
+    projectPointCloud(*lastFrame, 5, id, intrinsecs, depth2, index2);
+
+    for (int c = 0; c < index1->cols; ++c) {
+        for (int r = 0; r < index1->rows; ++r) {
+            double index = index1->at<double>(r, c);
+            if(index > 0){
+                Eigen::Vector3d modelPoint = model->points_[index];
+                Eigen::Vector3d framePoint = lastFrame->points_[index2->at<double>(r, c)];
+
+                //Two points close enough to get fused
+                if(abs(modelPoint(2) - framePoint(2)) < 0.1){
+                    model->points_[index] = (modelPoint + framePoint) / 2;
+                    cerr << "Somado\n";
+                }
+            }
+        }
+    }
+}
 #endif

@@ -24,7 +24,7 @@ using namespace std;
 using namespace cv;
 using namespace std::chrono;
 
-bool generateMesh = true;
+bool generateMesh = false;
 
 int main(int argc, char *argv[]){
 
@@ -32,7 +32,7 @@ int main(int argc, char *argv[]){
 
     //    SetVerbosityLevel(VerbosityLevel::VerboseAlways);
 
-    ScalableTSDFVolume tsdf(0.0005, 0.001, TSDFVolumeColorType::RGB8);
+    ScalableTSDFVolume tsdf(0.0005, 0.002, TSDFVolumeColorType::RGB8);
     Eigen::Matrix4d transf = Eigen::Matrix4d::Identity();
     transf <<  1,  0,  0,  0,
             0, -1,  0,  0,
@@ -44,23 +44,23 @@ int main(int argc, char *argv[]){
     //Kinect 360 unprojection
     //    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
     //Mickey Dataset
-    //    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
+    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
     //CORBS
     //    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(640, 480, 468.60, 468.61, 318.27, 243.99);
     //Kinect v2
-    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(512, 424, 363.491, 363.491, 256.496, 207.778);
+    //    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(512, 424, 363.491, 363.491, 256.496, 207.778);
 
     Aligner aligner(cameraIntrisecs);
-    aligner.setDist(0.1, 4);
-    double maxDistProjection = 4;
+    aligner.setDist(0.1, 0.3);
+    double maxDistProjection = 0.3;
 
     double fovX = 2 * atan(640 / (2 * cameraIntrisecs.GetFocalLength().first)) * 180.0 / CV_PI;
     double fovY = 2 * atan(480 / (2 * cameraIntrisecs.GetFocalLength().second)) * 180.0 / CV_PI;
     cerr << "FOVy " << fovY << endl;
     cerr << "FOVx " << fovX << endl;
-    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
+    //    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
     //    string datasetFolder = "/Users/thiago/Datasets/rgbd_dataset_freiburg1_plant/";
-    //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
+    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
     //    string datasetFolder = "/Users/thiago/Datasets/car/";
     //    string datasetFolder = "/Users/thiago/Datasets/desk/";
     //    string datasetFolder = "/Users/thiago/Datasets/sculp/";
@@ -68,7 +68,7 @@ int main(int argc, char *argv[]){
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
-    int initFrame = 0;
+    int initFrame = 30;
     int finalFrame = 6000;
 
     shared_ptr<PointCloud> pointCloud = std::make_shared<PointCloud>();
@@ -91,28 +91,31 @@ int main(int argc, char *argv[]){
         vis.PollEvents();
 
         int i1 = i;
-        int i2 = i + step;
+        int i2 = i1 + step;
         string depthPath1 = datasetFolder + "depth/" + depthFiles[i1];
         string rgbPath1 = datasetFolder + "rgb/" + rgbFiles[i1];
         string depthPath2 = datasetFolder + "depth/" + depthFiles[i2];
         string rgbPath2 = datasetFolder + "rgb/" + rgbFiles[i2];
         Mat rgb1 = imread(rgbPath1);
         Mat rgb2 = imread(rgbPath2);
-        Mat depth2;
-        //        if (i == initFrame)
+        Mat depth2, depth1;
+        //        if (i == initFrame){
         depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
-        //        else{
-        //            depth2 = projectPointCloud(*pointCloud, 5, transf.inverse(), cameraIntrisecs);
-        //            imshow("projection", depth2);
+        depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
         //        }
-        Mat depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
+        //        else{
+        //            depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
+        //            projectPointCloud(*pointCloud, 5, transf.inverse(), cameraIntrisecs, &depth2);
+        //            imshow("projection", depth2 * 10);
+        //        }
         Mat gray1;
         Mat gray2;
         cvtColor(rgb1, gray1, CV_BGR2GRAY);
         cvtColor(rgb2, gray2, CV_BGR2GRAY);
 
-        //        medianBlur(depth1, depth1, 7);
-        //        medianBlur(depth2, depth2, 7);
+        //        GaussianBlur(depth1, depth1, Size(3,3), 0.01, 0.01);
+        //        GaussianBlur(depth2, depth2, Size(3,3), 0.01, 0.01);
+        //        medianBlur(depth2, depth2, 3);
         Mat grayOut, depthOut;
         //        putText(gray1, to_string(i1), Point(5,30), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255,255,255), 2);
         //        putText(gray2, to_string(i+1), Point(5,30), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255,255,255), 2);
@@ -121,18 +124,17 @@ int main(int argc, char *argv[]){
         resize(grayOut, grayOut, Size(grayOut.cols/2, grayOut.rows/2));
         resize(depthOut, depthOut, Size(depthOut.cols/2, depthOut.rows/2));
         imshow("rgb", grayOut);
-        imshow("depth", depthOut);
+        imshow("depth", depthOut * 10);
 
         //Visualization
         shared_ptr<RGBDImage> rgbdImage;
         Mat tmpDepth;
         depth1.convertTo(tmpDepth, CV_64FC1, 0.0002);
-        Mat maskNormals = getMaskOfNormalsFromDepth(tmpDepth, cameraIntrisecs, 0, true);
+        Mat maskNormals = getMaskOfNormalsFromDepth(tmpDepth, cameraIntrisecs, 0, false, 1.3);
 
         rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
                                   cameraIntrisecs, maxDistProjection, &maskNormals);
-        //        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
-        //                                  cameraIntrisecs, aligner.maxDist);
+        //        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(), cameraIntrisecs, aligner.maxDist);
 
         shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, cameraIntrisecs, initCam);
         //        float div = (i-initFrame+1)/20.f;
@@ -141,7 +143,7 @@ int main(int argc, char *argv[]){
         if (!generateMesh){
             pcd->Transform(transf);
             *pointCloud = *pointCloud + *pcd;
-            pointCloud = VoxelDownSample(*pointCloud, 0.0004);
+            pointCloud = VoxelDownSample(*pointCloud, 0.0002);
         }
 
         //************ ALIGNMENT ************//
