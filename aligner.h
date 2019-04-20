@@ -248,11 +248,6 @@ public:
                     dDep = pixDep1 == 0 ? 0 : dDep;
                     dDep = pixDep2 == 0 ? 0 : dDep;
                     double wDep = *filteredNormals.ptr<double>(transfR_int, transfC_int);
-                    //                    wDep = wDep > 0.8 ? wDep : 0;
-                    //                    double v = 0.5f;
-                    //                    double wd = (v + 1.f) / (v + dDep*dDep);
-                    //                    wDep *= wd;
-                    //                    Int *= wd;
 
                     jacobians(i,0)   = wDep * jacobianDepth(0,0);
                     jacobians(i,1)   = wDep * jacobianDepth(0,1);
@@ -389,7 +384,7 @@ public:
             this->sum = DBL_MAX;
             cerr << "Iniciando de:" << endl;
             cerr << getMatrixRtFromPose6D(actualPoseVector6D);
-            double lambdas[] = { 0.5, 1, 1 };
+            double lambdas[] = { 1, 1, 1 };
             double threshold[] = { 1000, 160, 80 };
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
@@ -411,8 +406,8 @@ public:
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
                                              residuals, jacobians, 0, false , true);
-                doSingleIteration(residuals, jacobians, 2000, 200);
-                MatrixXd gradients = jacobians.transpose() * residuals;
+                doSingleIteration(residuals, jacobians, 100, 200);
+//                MatrixXd gradients = jacobians.transpose() * residuals;
             }
         }
     }

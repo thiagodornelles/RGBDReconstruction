@@ -75,7 +75,6 @@ Mat getMaskOfNormalsFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsecs, int
     Mat tempDepth, normals;
     Mat refPoints3d;
     depth.convertTo(tempDepth, CV_16UC1, 5000);
-//    blur(tempDepth, tempDepth, Size(3,3));
     depthTo3d(tempDepth, K, refPoints3d);
     normalComp(refPoints3d, normals);
 
@@ -101,7 +100,7 @@ Mat getMaskOfNormalsFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsecs, int
 
 void projectPointCloud(PointCloud pointCloud, double maxDist,
                        Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsecs,
-                       Mat *depthMap, Mat *indexMap = NULL){
+                       Mat &depthMap, Mat &indexMap){
 
     int width = intrinsecs.width_;
     int height = intrinsecs.height_;
@@ -110,15 +109,13 @@ void projectPointCloud(PointCloud pointCloud, double maxDist,
     double cy = intrinsecs.GetPrincipalPoint().second;
     double fx = intrinsecs.GetFocalLength().first;
     double fy = intrinsecs.GetFocalLength().second;
-    depthMap = new Mat(height, width, CV_16UC1);
-    depthMap->setTo(0);
 
-    if(indexMap){
-        indexMap = new Mat(height, width, CV_64FC1);
-        indexMap->setTo(-1);
-    }
+    depthMap.create(height, width, CV_16UC1);
+    depthMap.setTo(0);
+    indexMap.create(height, width, CV_64FC1);
+    indexMap.setTo(-1);
 
-    for (size_t i = 0; i < pointCloud.points_.size(); i++) {
+    for (int i = 0; i < pointCloud.points_.size(); i++) {
 
         Eigen::Vector3d pcdPoint = pointCloud.points_[i];
         Eigen::Vector4d refPoint3d;
@@ -138,17 +135,19 @@ void projectPointCloud(PointCloud pointCloud, double maxDist,
 
         //Checks if this pixel projects inside of the image
         if((transfR_int >= 0 && transfR_int < height) &&
-           (transfC_int >= 0 && transfC_int < width) &&
-           refPoint3d(2) > 0.1 && refPoint3d(2) < maxDist) {
+                (transfC_int >= 0 && transfC_int < width) &&
+                refPoint3d(2) > 0.1 && refPoint3d(2) < maxDist) {
 
-            if(*depthMap->ptr<short>(transfR_int, transfC_int) < refPoint3d(2) && refPoint3d(2) > 0){
-                *depthMap->ptr<short>(transfR_int, transfC_int) = refPoint3d(2) * 5000;
-                if(indexMap){
-                    *indexMap->ptr<double>(transfR_int, transfC) = i;
-                }
+            double lastZ = *depthMap.ptr<ushort>(transfR_int, transfC_int)/5000.f;
+            if(refPoint3d(2) > lastZ){
+                *depthMap.ptr<ushort>(transfR_int, transfC_int) = refPoint3d(2) * 5000;
+                *indexMap.ptr<double>(transfR_int, transfC_int) = static_cast<double>(i);
             }
+
         }
     }
+//    imshow("depthMap", depthMap * 10);
+//    imshow("indexMap", indexMap);
 }
 
 Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsecs){
@@ -164,7 +163,7 @@ Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeC
 
     for (int i = 0; i < nPoints; ++i) {
         int py = i / depthMap.cols;
-        int px = i % depthMap.cols;        
+        int px = i % depthMap.cols;
         double z = *depthMap.ptr<double>(py, px);
         if(z > maxDist) continue;
         double x = (px - cx) * z * 1/fx;
@@ -203,26 +202,52 @@ void merge(shared_ptr<PointCloud> model, shared_ptr<PointCloud> lastFrame, Pinho
         return;
     }
 
-    Eigen::Matrix4d id = Eigen::Matrix4d::Identity();
-    Mat *depth1, *depth2;
-    Mat *index1, *index2;
-    projectPointCloud(*model, 5, id, intrinsecs, depth1, index1);
-    projectPointCloud(*lastFrame, 5, id, intrinsecs, depth2, index2);
+    Eigen::Matrix4d transf = Eigen::Matrix4d::Identity();
+    transf <<  1,  0,  0,  0,
+               0, -1,  0,  0,
+               0,  0, -1,  0,
+               0,  0,  0,  1;
 
-    for (int c = 0; c < index1->cols; ++c) {
-        for (int r = 0; r < index1->rows; ++r) {
-            double index = index1->at<double>(r, c);
-            if(index > 0){
-                Eigen::Vector3d modelPoint = model->points_[index];
-                Eigen::Vector3d framePoint = lastFrame->points_[index2->at<double>(r, c)];
+    Mat depth1, depth2;
+    Mat index1, index2;
+    projectPointCloud(*model, 5, transf, intrinsecs, depth1, index1);
+    projectPointCloud(*lastFrame, 5, transf, intrinsecs, depth2, index2);
+
+    int added = 0;
+    int fused = 0;
+
+    for (int r = 0; r < index1.rows; ++r) {
+        for (int c = 0; c < index1.cols; ++c) {
+            double i1 = *index1.ptr<double>(r, c);
+            double i2 = *index2.ptr<double>(r, c);
+            if(i2 >= 0 && i1 >= 0){
+                Eigen::Vector3d modelPoint = model->points_[i1];
+                Eigen::Vector3d modelColor = model->colors_[i1];
+                Eigen::Vector3d framePoint = lastFrame->points_[i2];
+                Eigen::Vector3d frameColor = lastFrame->colors_[i2];
 
                 //Two points close enough to get fused
-                if(abs(modelPoint(2) - framePoint(2)) < 0.1){
-                    model->points_[index] = (modelPoint + framePoint) / 2;
-                    cerr << "Somado\n";
+                if(abs(modelPoint(2) - framePoint(2)) < 0.2){
+                    model->points_[i1] = (modelPoint + framePoint) / 2;
+                    model->colors_[i1] = (modelColor + frameColor) / 2;
+                    fused++;
                 }
+                else{
+                    model->points_.push_back(framePoint);
+                    model->colors_.push_back(frameColor);
+                    added++;
+                }
+            }
+            else if(i2 >= 0 && i1 == -1){
+                Eigen::Vector3d framePoint = lastFrame->points_[i2];
+                Eigen::Vector3d frameColor = lastFrame->colors_[i2];
+                model->points_.push_back(framePoint);
+                model->colors_.push_back(frameColor);
+                added++;
             }
         }
     }
+    cerr << "Fused points " << fused << endl;
+    cerr << "Added points " << added << endl;
 }
 #endif

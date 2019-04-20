@@ -60,15 +60,16 @@ int main(int argc, char *argv[]){
     cerr << "FOVx " << fovX << endl;
     //    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
     //    string datasetFolder = "/Users/thiago/Datasets/rgbd_dataset_freiburg1_plant/";
-    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
+    //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
+    //    string datasetFolder = "/Users/thiago/Datasets/mickey/";
     //    string datasetFolder = "/Users/thiago/Datasets/car/";
     //    string datasetFolder = "/Users/thiago/Datasets/desk/";
-    //    string datasetFolder = "/Users/thiago/Datasets/sculp/";
+    string datasetFolder = "/Users/thiago/Datasets/sculp/";
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
-    int initFrame = 30;
+    int initFrame = 0;
     int finalFrame = 6000;
 
     shared_ptr<PointCloud> pointCloud = std::make_shared<PointCloud>();
@@ -99,15 +100,16 @@ int main(int argc, char *argv[]){
         Mat rgb1 = imread(rgbPath1);
         Mat rgb2 = imread(rgbPath2);
         Mat depth2, depth1;
-        //        if (i == initFrame){
-        depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
-        depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
-        //        }
-        //        else{
-        //            depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
-        //            projectPointCloud(*pointCloud, 5, transf.inverse(), cameraIntrisecs, &depth2);
-        //            imshow("projection", depth2 * 10);
-        //        }
+        Mat index2;
+        if (i == initFrame){
+            depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
+            depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
+        }
+        else{
+            depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
+            projectPointCloud(*pointCloud, 5, transf.inverse(), cameraIntrisecs, depth2, index2);
+//            imshow("projection", depth2 * 10);
+        }
         Mat gray1;
         Mat gray2;
         cvtColor(rgb1, gray1, CV_BGR2GRAY);
@@ -142,8 +144,9 @@ int main(int argc, char *argv[]){
         transf = transf * aligner.getMatrixRtFromPose6D(aligner.getPose6D()).inverse();
         if (!generateMesh){
             pcd->Transform(transf);
-            *pointCloud = *pointCloud + *pcd;
-            pointCloud = VoxelDownSample(*pointCloud, 0.0002);
+//            *pointCloud = *pointCloud + *pcd;
+//            pointCloud = VoxelDownSample(*pointCloud, 0.0002);
+            merge(pointCloud, pcd, cameraIntrisecs);
         }
 
         //************ ALIGNMENT ************//
