@@ -11,6 +11,7 @@ set(project_sources
     util.h
     filereader.h
     aligner.h
+    pointcloudextend.h
 )
 
 # Find OpenCV

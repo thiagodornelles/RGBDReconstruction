@@ -95,7 +95,7 @@ public:
         Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, depScales[level], 0.0, cv::BORDER_DEFAULT);
         Scharr(actDepImage, actDepDerivY, CV_64F, 0, 1, depScales[level], 0.0, cv::BORDER_DEFAULT);
 
-        Mat filteredNormals = getMaskOfNormalsFromDepth(actDepImage, intrinsecs, level, true, 1.3);
+        Mat filteredNormals = getMaskOfNormalsFromDepth(actDepImage, intrinsecs, level, false, 1.3);
         imshow("wDep", filteredNormals);
 
         //Extrinsecs
@@ -145,15 +145,7 @@ public:
                 gradPixDepth(0,0) = *actDepDerivX.ptr<double>(y, x);
                 gradPixDepth(0,1) = *actDepDerivY.ptr<double>(y, x);
 
-                double gradX = gradPixIntensity(0,0);
-                double gradY = gradPixIntensity(0,1);
-
                 double wInt = 1;
-                //                double wInt = (gradX * gradX + gradY * gradY) > gradLevels[level] ? 1 : 0;
-                //                if( wInt == 0 ){
-                //                    count++;
-                //                    continue;
-                //                }
 
                 //******* BEGIN Unprojection of DepthMap ********
                 Vector4d refPoint3D;
@@ -247,7 +239,7 @@ public:
                     dDep = abs(dDep) > 0.4 ? 0 : dDep;
                     dDep = pixDep1 == 0 ? 0 : dDep;
                     dDep = pixDep2 == 0 ? 0 : dDep;
-                    double wDep = *filteredNormals.ptr<double>(transfR_int, transfC_int);
+                    double wDep = *filteredNormals.ptr<double>(transfR_int, transfC_int);                    
 
                     jacobians(i,0)   = wDep * jacobianDepth(0,0);
                     jacobians(i,1)   = wDep * jacobianDepth(0,1);
@@ -265,8 +257,8 @@ public:
                     residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep * depth;
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt * color;
 
-                    residualImage.at<double>(transfR_int, transfC_int) = 10 * wInt * dInt * color;
-                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = 500 * wDep * dDep * depth;
+                    residualImage.at<double>(transfR_int, transfC_int) = wInt * dInt * color;
+                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = 100 * wDep * dDep * depth;
                 }
             }
         }, nthreads
@@ -400,14 +392,13 @@ public:
             int rows = refGray.rows;
             int cols = refGray.cols;
 
-            for (int i = 0; i < 10; ++i) {
+            for (int i = 0; i < 5; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
-                                             residuals, jacobians, 0, false , true);
-                doSingleIteration(residuals, jacobians, 100, 200);
-//                MatrixXd gradients = jacobians.transpose() * residuals;
+                                             residuals, jacobians, 0, true , false);
+                doSingleIteration(residuals, jacobians, 1, 200);
             }
         }
     }

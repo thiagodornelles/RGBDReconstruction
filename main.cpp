@@ -31,8 +31,7 @@ int main(int argc, char *argv[]){
     cerr << CV_VERSION << endl;
 
     //    SetVerbosityLevel(VerbosityLevel::VerboseAlways);
-
-    ScalableTSDFVolume tsdf(0.0005, 0.002, TSDFVolumeColorType::RGB8);
+    ScalableTSDFVolume tsdf(0.0002, 0.001, TSDFVolumeColorType::RGB8);
     Eigen::Matrix4d transf = Eigen::Matrix4d::Identity();
     transf <<  1,  0,  0,  0,
             0, -1,  0,  0,
@@ -40,42 +39,51 @@ int main(int argc, char *argv[]){
             0,  0,  0,  1;
 
     Eigen::Matrix4d initCam = Eigen::Matrix4d::Identity();
+    Eigen::Matrix4d extrinsics = Eigen::Matrix4d::Identity();
+    extrinsics << 1, 0, 0, 0,
+                0, -1, 0, 0,
+                0, 0, -1, 0,
+                0, 0, 0, 1;
 
     //Kinect 360 unprojection
-    //    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
+    //    PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
     //Mickey Dataset
-    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
+    PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
     //CORBS
-    //    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(640, 480, 468.60, 468.61, 318.27, 243.99);
+    //    PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 468.60, 468.61, 318.27, 243.99);
     //Kinect v2
-    //    PinholeCameraIntrinsic cameraIntrisecs = PinholeCameraIntrinsic(512, 424, 363.491, 363.491, 256.496, 207.778);
+    //    PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(512, 424, 363.491, 363.491, 256.496, 207.778);
 
-    Aligner aligner(cameraIntrisecs);
+    Aligner aligner(cameraIntrinsics);
     aligner.setDist(0.1, 0.3);
     double maxDistProjection = 0.3;
 
-    double fovX = 2 * atan(640 / (2 * cameraIntrisecs.GetFocalLength().first)) * 180.0 / CV_PI;
-    double fovY = 2 * atan(480 / (2 * cameraIntrisecs.GetFocalLength().second)) * 180.0 / CV_PI;
+    double fovX = 2 * atan(640 / (2 * cameraIntrinsics.GetFocalLength().first)) * 180.0 / CV_PI;
+    double fovY = 2 * atan(480 / (2 * cameraIntrinsics.GetFocalLength().second)) * 180.0 / CV_PI;
     cerr << "FOVy " << fovY << endl;
     cerr << "FOVx " << fovX << endl;
     //    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
     //    string datasetFolder = "/Users/thiago/Datasets/rgbd_dataset_freiburg1_plant/";
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
-    //    string datasetFolder = "/Users/thiago/Datasets/mickey/";
+    string datasetFolder = "/Users/thiago/Datasets/mickey/";
     //    string datasetFolder = "/Users/thiago/Datasets/car/";
     //    string datasetFolder = "/Users/thiago/Datasets/desk/";
-    string datasetFolder = "/Users/thiago/Datasets/sculp/";
+    //    string datasetFolder = "/Users/thiago/Datasets/sculp/";
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
-    int initFrame = 0;
+    int initFrame = 130;
     int finalFrame = 6000;
 
     shared_ptr<PointCloud> pointCloud = std::make_shared<PointCloud>();
     shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
 
-    int step = 1;
+    PinholeCameraParameters camParameters;
+    camParameters.intrinsic_ = cameraIntrinsics;
+    camParameters.extrinsic_ = extrinsics;
+
+    int step = 2;
     for (int i = initFrame; i < depthFiles.size()-1; i+=step) {
 
         Visualizer vis;
@@ -83,10 +91,12 @@ int main(int argc, char *argv[]){
         vis.GetRenderOption().point_size_ = 1;
         vis.GetViewControl().SetViewMatrices(initCam);
 
-        if (generateMesh)
+        if (generateMesh){
             vis.AddGeometry({mesh});
-        else
+        }
+        else{
             vis.AddGeometry({pointCloud});
+        }
         vis.UpdateGeometry();
         vis.UpdateRender();
         vis.PollEvents();
@@ -100,27 +110,35 @@ int main(int argc, char *argv[]){
         Mat rgb1 = imread(rgbPath1);
         Mat rgb2 = imread(rgbPath2);
         Mat depth2, depth1;
+        Mat depthTmp;
         Mat index2;
         if (i == initFrame){
             depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
         }
         else{
+            depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
-            projectPointCloud(*pointCloud, 5, transf.inverse(), cameraIntrisecs, depth2, index2);
-//            imshow("projection", depth2 * 10);
+
+            if (!generateMesh){
+                projectPointCloud(*pointCloud, maxDistProjection, transf.inverse(),
+                                  cameraIntrinsics, depthTmp, index2);
+//                combineDepthsFilter(depth2, depthTmp);
+                depth2 = depthTmp;
+            }
+            else{
+//                depth2 = convertDepthTo16bit(vis.CaptureDepthFloatBuffer(false));
+                projectPointCloud(*tsdf.ExtractPointCloud(), maxDistProjection,
+                                  transf.inverse(), cameraIntrinsics, depth2, index2);
+            }
+            imshow("projection", depth2 * 10);
         }
         Mat gray1;
         Mat gray2;
         cvtColor(rgb1, gray1, CV_BGR2GRAY);
         cvtColor(rgb2, gray2, CV_BGR2GRAY);
 
-        //        GaussianBlur(depth1, depth1, Size(3,3), 0.01, 0.01);
-        //        GaussianBlur(depth2, depth2, Size(3,3), 0.01, 0.01);
-        //        medianBlur(depth2, depth2, 3);
         Mat grayOut, depthOut;
-        //        putText(gray1, to_string(i1), Point(5,30), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255,255,255), 2);
-        //        putText(gray2, to_string(i+1), Point(5,30), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255,255,255), 2);
         hconcat(gray1, gray2, grayOut);
         hconcat(depth1, depth2, depthOut);
         resize(grayOut, grayOut, Size(grayOut.cols/2, grayOut.rows/2));
@@ -132,31 +150,28 @@ int main(int argc, char *argv[]){
         shared_ptr<RGBDImage> rgbdImage;
         Mat tmpDepth;
         depth1.convertTo(tmpDepth, CV_64FC1, 0.0002);
-        Mat maskNormals = getMaskOfNormalsFromDepth(tmpDepth, cameraIntrisecs, 0, false, 1.3);
+        Mat maskNormals = getMaskOfNormalsFromDepth(tmpDepth, cameraIntrinsics, 0, false);
 
         rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
-                                  cameraIntrisecs, maxDistProjection, &maskNormals);
-        //        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(), cameraIntrisecs, aligner.maxDist);
+                                  cameraIntrinsics, maxDistProjection, &maskNormals);
+//        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
+//                                  cameraIntrinsics, maxDistProjection);
 
-        shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, cameraIntrisecs, initCam);
-        //        float div = (i-initFrame+1)/20.f;
-        //        pcd->PaintUniformColor(Vector3d(0,div,0));
+        shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, cameraIntrinsics, initCam);
         transf = transf * aligner.getMatrixRtFromPose6D(aligner.getPose6D()).inverse();
         if (!generateMesh){
             pcd->Transform(transf);
-//            *pointCloud = *pointCloud + *pcd;
-//            pointCloud = VoxelDownSample(*pointCloud, 0.0002);
-            merge(pointCloud, pcd, cameraIntrisecs);
+            merge(pointCloud, pcd, cameraIntrinsics);
         }
 
         //************ ALIGNMENT ************//
         auto start = high_resolution_clock::now();
-        aligner.getPoseTransform(gray1, depth1, gray2, depth2, true);
+        aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
         auto stop = high_resolution_clock::now();
         cerr << "Obtida transf:\n" << aligner.getMatrixRtFromPose6D(aligner.getPose6D()) << endl;
 
         if (generateMesh){
-            tsdf.Integrate(*rgbdImage, cameraIntrisecs, transf.inverse());
+            tsdf.Integrate(*rgbdImage, cameraIntrinsics, transf.inverse());
             mesh = tsdf.ExtractTriangleMesh();
             mesh->ComputeTriangleNormals();
         }
