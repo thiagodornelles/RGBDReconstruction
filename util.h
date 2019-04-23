@@ -119,7 +119,7 @@ void projectPointCloud(PointCloud pointCloud, double maxDist,
 
     depthMap.create(height, width, CV_16UC1);
     depthMap.setTo(65535);
-    indexMap.create(height, width, CV_64FC1);
+    indexMap.create(height, width, CV_32SC1);
     indexMap.setTo(-1);
 
     for (int i = 0; i < pointCloud.points_.size(); i++) {
@@ -149,12 +149,12 @@ void projectPointCloud(PointCloud pointCloud, double maxDist,
 
             if(value < lastZ){
                 *depthMap.ptr<ushort>(transfR_int, transfC_int) = value;
-                *indexMap.ptr<double>(transfR_int, transfC_int) = i;
+                *indexMap.ptr<int>(transfR_int, transfC_int) = i;
             }
         }
     }
-    depthMap.setTo(0, depthMap == 65535);
-    medianBlur(depthMap, depthMap, 7);
+    depthMap.setTo(0, depthMap == 65535);    
+    medianBlur(depthMap, depthMap, 5);
 }
 
 void combineDepthsFilter(Mat &originalDepth, Mat &projectedDepth){
@@ -168,58 +168,6 @@ void combineDepthsFilter(Mat &originalDepth, Mat &projectedDepth){
     );
     medianBlur(projectedDepth, projectedDepth, 5);
 }
-
-void projectMesh(shared_ptr<TriangleMesh> mesh, double maxDist,
-                       Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics,
-                       Mat &depthMap, Mat &indexMap){
-
-    int width = intrinsics.width_;
-    int height = intrinsics.height_;
-
-    double cx = intrinsics.GetPrincipalPoint().first;
-    double cy = intrinsics.GetPrincipalPoint().second;
-    double fx = intrinsics.GetFocalLength().first;
-    double fy = intrinsics.GetFocalLength().second;
-
-    depthMap.create(height, width, CV_16UC1);
-    depthMap.setTo(0);
-    indexMap.create(height, width, CV_64FC1);
-    indexMap.setTo(-1);
-
-    for (int i = 0; i < mesh->triangles_.size(); i++) {
-
-        Eigen::Vector3i triangle = mesh->triangles_[i];
-        Eigen::Vector4d refPoint3d;
-        refPoint3d(0) = triangle(0);
-        refPoint3d(1) = triangle(1);
-        refPoint3d(2) = triangle(2);
-        refPoint3d(3) = 1;
-        refPoint3d = Rt * refPoint3d;
-        double invTransfZ = 1.0 / refPoint3d(2);
-
-        //******* BEGIN Projection of PointCloud on the image plane ********
-        double transfC = (refPoint3d(0) * fx) * invTransfZ + cx;
-        double transfR = (refPoint3d(1) * fy) * invTransfZ + cy;
-        int transfR_int = static_cast<int>(round(transfR));
-        int transfC_int = static_cast<int>(round(transfC));
-        //******* END Projection of PointCloud on the image plane ********
-
-        //Checks if this pixel projects inside of the image
-        if((transfR_int >= 0 && transfR_int < height) &&
-                (transfC_int >= 0 && transfC_int < width) &&
-                refPoint3d(2) > 0.1 && refPoint3d(2) < maxDist) {
-
-            double lastZ = *depthMap.ptr<ushort>(transfR_int, transfC_int)/5000.f;
-
-            if(refPoint3d(2) > lastZ){
-                ushort value = refPoint3d(2) * 5000;
-                *depthMap.ptr<ushort>(transfR_int, transfC_int) = value;
-                *indexMap.ptr<double>(transfR_int, transfC_int) = i;
-            }
-        }
-    }
-}
-
 
 Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics){
 
@@ -266,18 +214,14 @@ Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeC
     return projected;
 }
 
-void merge(shared_ptr<PointCloud> model, shared_ptr<PointCloud> lastFrame, PinholeCameraIntrinsic intrinsics){
+void merge(shared_ptr<PointCloud> model, shared_ptr<PointCloud> lastFrame,
+           Eigen::Matrix4d transf, Mat normalMap,
+           PinholeCameraIntrinsic intrinsics){
 
     if(model->IsEmpty()){
         *model = *model + *lastFrame;
         return;
     }
-
-    Eigen::Matrix4d transf = Eigen::Matrix4d::Identity();
-//    transf <<  1,  0,  0,  0,
-//            0, -1,  0,  0,
-//            0,  0, -1,  0,
-//            0,  0,  0,  1;
 
     Mat depth1, depth2;
     Mat modelIdx, lastFrameIdx;
@@ -290,8 +234,14 @@ void merge(shared_ptr<PointCloud> model, shared_ptr<PointCloud> lastFrame, Pinho
 
     for (int r = 0; r < modelIdx.rows; ++r) {
         for (int c = 0; c < modelIdx.cols; ++c) {
-            double modIdx = *modelIdx.ptr<double>(r, c);
-            double lastIdx = *lastFrameIdx.ptr<double>(r, c);
+            int modIdx = *modelIdx.ptr<int>(r, c);
+            int lastIdx = *lastFrameIdx.ptr<int>(r, c);
+            double normal = *normalMap.ptr<double>(r, c);
+
+            if(normal == 0)
+                continue;
+
+            //Two points are into a line of sight from camera
             if(lastIdx >= 0 && modIdx >= 0){
                 Eigen::Vector3d modelPoint = model->points_[modIdx];
                 Eigen::Vector3d modelColor = model->colors_[modIdx];
@@ -300,16 +250,20 @@ void merge(shared_ptr<PointCloud> model, shared_ptr<PointCloud> lastFrame, Pinho
 
                 //Two points close enough to get fused
                 if(abs(modelPoint(2) - framePoint(2)) < 0.02){
-                    model->points_[modIdx] = modelPoint * 0.9 + framePoint * 0.1;
-                    model->colors_[modIdx] = modelColor * 0.9 + frameColor * 0.1;
+                    model->points_[modIdx] = (modelPoint * 1 + framePoint * normal)/ (1 + normal);
+                    model->colors_[modIdx] = (modelColor * 1 + frameColor * normal)/ (1 + normal);
                     fused++;
                 }
-                else if(framePoint(2) < modelPoint(2)){
+                //Far enough to be another point in front of this point
+                else{
+                    Eigen::Vector3d framePoint = lastFrame->points_[lastIdx];
+                    Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
                     model->points_.push_back(framePoint);
                     model->colors_.push_back(frameColor);
                     added1++;
                 }
             }
+            //A new point
             else if(lastIdx >= 0 && modIdx == -1){
                 Eigen::Vector3d framePoint = lastFrame->points_[lastIdx];
                 Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];

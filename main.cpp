@@ -65,7 +65,7 @@ int main(int argc, char *argv[]){
     //    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
     //    string datasetFolder = "/Users/thiago/Datasets/rgbd_dataset_freiburg1_plant/";
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
-    string datasetFolder = "/Users/thiago/Datasets/mickey/";
+    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
     //    string datasetFolder = "/Users/thiago/Datasets/car/";
     //    string datasetFolder = "/Users/thiago/Datasets/desk/";
     //    string datasetFolder = "/Users/thiago/Datasets/sculp/";
@@ -73,15 +73,11 @@ int main(int argc, char *argv[]){
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
-    int initFrame = 130;
+    int initFrame = 0;
     int finalFrame = 6000;
 
     shared_ptr<PointCloud> pointCloud = std::make_shared<PointCloud>();
     shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
-
-    PinholeCameraParameters camParameters;
-    camParameters.intrinsic_ = cameraIntrinsics;
-    camParameters.extrinsic_ = extrinsics;
 
     int step = 2;
     for (int i = initFrame; i < depthFiles.size()-1; i+=step) {
@@ -110,24 +106,19 @@ int main(int argc, char *argv[]){
         Mat rgb1 = imread(rgbPath1);
         Mat rgb2 = imread(rgbPath2);
         Mat depth2, depth1;
-        Mat depthTmp;
         Mat index2;
         if (i == initFrame){
             depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
         }
-        else{
-            depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
+        else{            
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
 
             if (!generateMesh){
                 projectPointCloud(*pointCloud, maxDistProjection, transf.inverse(),
-                                  cameraIntrinsics, depthTmp, index2);
-//                combineDepthsFilter(depth2, depthTmp);
-                depth2 = depthTmp;
+                                  cameraIntrinsics, depth2, index2);
             }
             else{
-//                depth2 = convertDepthTo16bit(vis.CaptureDepthFloatBuffer(false));
                 projectPointCloud(*tsdf.ExtractPointCloud(), maxDistProjection,
                                   transf.inverse(), cameraIntrinsics, depth2, index2);
             }
@@ -150,7 +141,8 @@ int main(int argc, char *argv[]){
         shared_ptr<RGBDImage> rgbdImage;
         Mat tmpDepth;
         depth1.convertTo(tmpDepth, CV_64FC1, 0.0002);
-        Mat maskNormals = getMaskOfNormalsFromDepth(tmpDepth, cameraIntrinsics, 0, false);
+        Mat maskNormals = getMaskOfNormalsFromDepth(tmpDepth, cameraIntrinsics, 0, true, 1.3);
+        imshow("maskNormals", maskNormals);
 
         rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
                                   cameraIntrinsics, maxDistProjection, &maskNormals);
@@ -161,7 +153,7 @@ int main(int argc, char *argv[]){
         transf = transf * aligner.getMatrixRtFromPose6D(aligner.getPose6D()).inverse();
         if (!generateMesh){
             pcd->Transform(transf);
-            merge(pointCloud, pcd, cameraIntrinsics);
+            merge(pointCloud, pcd, transf.inverse(), maskNormals, cameraIntrinsics);
         }
 
         //************ ALIGNMENT ************//
