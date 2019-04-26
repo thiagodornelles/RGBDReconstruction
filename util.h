@@ -10,6 +10,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/rgbd.hpp>
 #include <opencv2/highgui.hpp>
+#include "pointcloudextend.h"
 
 using namespace open3d;
 using namespace cv;
@@ -97,10 +98,7 @@ Mat getMaskOfNormalsFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsics, int
     );
 
     if (dilateBorders){
-        Mat element = getStructuringElement( MORPH_CROSS,
-                                             Size( 2*3 + 1, 2*3+1 ),
-                                             Point( 3, 3 ) );
-        erode( filtered, filtered, element );
+        erode(filtered, filtered, getStructuringElement(MORPH_CROSS, Size(3, 3)));
     }
     return filtered;
 }
@@ -145,7 +143,7 @@ void projectPointCloud(PointCloud pointCloud, double maxDist,
                 (transfC_int >= 0 && transfC_int < width)) {
 
             ushort lastZ = *depthMap.ptr<ushort>(transfR_int, transfC_int);
-            ushort value = refPoint3d(2) * 5000;            
+            ushort value = refPoint3d(2) * 5000;
 
             if(value < lastZ){
                 *depthMap.ptr<ushort>(transfR_int, transfC_int) = value;
@@ -153,7 +151,7 @@ void projectPointCloud(PointCloud pointCloud, double maxDist,
             }
         }
     }
-    depthMap.setTo(0, depthMap == 65535);    
+    depthMap.setTo(0, depthMap == 65535);
     medianBlur(depthMap, depthMap, 5);
 }
 
@@ -214,13 +212,31 @@ Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeC
     return projected;
 }
 
-void merge(shared_ptr<PointCloud> model, shared_ptr<PointCloud> lastFrame,
+void merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFrame,
            Eigen::Matrix4d transf, Mat normalMap,
            PinholeCameraIntrinsic intrinsics){
 
+    //At first model comes empty then will be fullfilled with first frame's points
     if(model->IsEmpty()){
-        *model = *model + *lastFrame;
+        for (int i = 0; i < lastFrame->points_.size(); ++i) {
+            model->points_.push_back(lastFrame->points_[i]);
+            model->colors_.push_back(lastFrame->colors_[i]);
+        }
+        model->reserveAndAssign(lastFrame->points_.size());
         return;
+    }
+
+    int confThresh = 6;
+    //Aging of points
+    for (int i = 0; i < model->points_.size(); ++i) {
+        model->frameCounter_[i]++;
+        if(model->frameCounter_[i] > confThresh && model->hitCounter_[i] < confThresh){
+            model->points_.erase(model->points_.begin() + i);
+            model->colors_.erase(model->colors_.begin() + i);
+            model->frameCounter_.erase(model->frameCounter_.begin() + i);
+            model->hitCounter_.erase(model->hitCounter_.begin() + i);
+//            model->colors_[i] = Eigen::Vector3d(0,1,0);
+        }
     }
 
     Mat depth1, depth2;
@@ -232,13 +248,14 @@ void merge(shared_ptr<PointCloud> model, shared_ptr<PointCloud> lastFrame,
     int fused = 0;
     int added2 = 0;
 
+
     for (int r = 0; r < modelIdx.rows; ++r) {
         for (int c = 0; c < modelIdx.cols; ++c) {
             int modIdx = *modelIdx.ptr<int>(r, c);
             int lastIdx = *lastFrameIdx.ptr<int>(r, c);
             double normal = *normalMap.ptr<double>(r, c);
 
-            if(normal == 0)
+            if(normal <= 0)
                 continue;
 
             //Two points are into a line of sight from camera
@@ -250,8 +267,9 @@ void merge(shared_ptr<PointCloud> model, shared_ptr<PointCloud> lastFrame,
 
                 //Two points close enough to get fused
                 if(abs(modelPoint(2) - framePoint(2)) < 0.02){
-                    model->points_[modIdx] = (modelPoint * 1 + framePoint * normal)/ (1 + normal);
-                    model->colors_[modIdx] = (modelColor * 1 + frameColor * normal)/ (1 + normal);
+                    model->points_[modIdx] = (modelPoint * 0.5 + framePoint * 0.5);
+                    model->colors_[modIdx] = (modelColor * 0.5 + frameColor * 0.5);
+                    model->hitCounter_[modIdx]++;
                     fused++;
                 }
                 //Far enough to be another point in front of this point
@@ -260,6 +278,8 @@ void merge(shared_ptr<PointCloud> model, shared_ptr<PointCloud> lastFrame,
                     Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
                     model->points_.push_back(framePoint);
                     model->colors_.push_back(frameColor);
+                    model->hitCounter_.push_back(0);
+                    model->frameCounter_.push_back(0);
                     added1++;
                 }
             }
@@ -269,6 +289,8 @@ void merge(shared_ptr<PointCloud> model, shared_ptr<PointCloud> lastFrame,
                 Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
                 model->points_.push_back(framePoint);
                 model->colors_.push_back(frameColor);
+                model->hitCounter_.push_back(0);
+                model->frameCounter_.push_back(0);
                 added2++;
             }
         }

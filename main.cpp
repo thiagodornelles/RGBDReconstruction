@@ -10,7 +10,7 @@
 #include <Visualization/Visualization.h>
 #include <Integration/ScalableTSDFVolume.h>
 #include <Geometry/Geometry.h>
-
+#include <Geometry/PointCloud.h>
 #include <opencv2/highgui/highgui.hpp>
 
 #include <Eigen/Core>
@@ -39,11 +39,6 @@ int main(int argc, char *argv[]){
             0,  0,  0,  1;
 
     Eigen::Matrix4d initCam = Eigen::Matrix4d::Identity();
-    Eigen::Matrix4d extrinsics = Eigen::Matrix4d::Identity();
-    extrinsics << 1, 0, 0, 0,
-                0, -1, 0, 0,
-                0, 0, -1, 0,
-                0, 0, 0, 1;
 
     //Kinect 360 unprojection
     //    PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
@@ -62,7 +57,7 @@ int main(int argc, char *argv[]){
     double fovY = 2 * atan(480 / (2 * cameraIntrinsics.GetFocalLength().second)) * 180.0 / CV_PI;
     cerr << "FOVy " << fovY << endl;
     cerr << "FOVx " << fovX << endl;
-    //    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
+//    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
     //    string datasetFolder = "/Users/thiago/Datasets/rgbd_dataset_freiburg1_plant/";
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
     string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
@@ -73,13 +68,13 @@ int main(int argc, char *argv[]){
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
-    int initFrame = 0;
+    int initFrame = 100;
     int finalFrame = 6000;
 
-    shared_ptr<PointCloud> pointCloud = std::make_shared<PointCloud>();
+    shared_ptr<PointCloudExtended> pointCloud = std::make_shared<PointCloudExtended>();
     shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
 
-    int step = 2;
+    int step = 1;
     for (int i = initFrame; i < depthFiles.size()-1; i+=step) {
 
         Visualizer vis;
@@ -111,7 +106,7 @@ int main(int argc, char *argv[]){
             depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
         }
-        else{            
+        else{
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
 
             if (!generateMesh){
@@ -129,6 +124,9 @@ int main(int argc, char *argv[]){
         cvtColor(rgb1, gray1, CV_BGR2GRAY);
         cvtColor(rgb2, gray2, CV_BGR2GRAY);
 
+        threshold(depth1, depth1, 2000, 65535, THRESH_TOZERO_INV);
+        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(5, 5)));
+
         Mat grayOut, depthOut;
         hconcat(gray1, gray2, grayOut);
         hconcat(depth1, depth2, depthOut);
@@ -139,21 +137,23 @@ int main(int argc, char *argv[]){
 
         //Visualization
         shared_ptr<RGBDImage> rgbdImage;
-        Mat tmpDepth;
-        depth1.convertTo(tmpDepth, CV_64FC1, 0.0002);
-        Mat maskNormals = getMaskOfNormalsFromDepth(tmpDepth, cameraIntrinsics, 0, true, 1.3);
+        Mat tmpDepth1, tmpDepth2;
+        depth1.convertTo(tmpDepth1, CV_64FC1, 0.0002);
+        //        depth2.convertTo(tmpDepth2, CV_64FC1, 0.0002);
+        Mat maskNormals = getMaskOfNormalsFromDepth(tmpDepth1, cameraIntrinsics, 0, true);
         imshow("maskNormals", maskNormals);
 
+        //        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
+        //                                  cameraIntrinsics, maxDistProjection, &maskNormals);
         rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
-                                  cameraIntrinsics, maxDistProjection, &maskNormals);
-//        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
-//                                  cameraIntrinsics, maxDistProjection);
+                                  cameraIntrinsics, maxDistProjection);
 
         shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, cameraIntrinsics, initCam);
         transf = transf * aligner.getMatrixRtFromPose6D(aligner.getPose6D()).inverse();
         if (!generateMesh){
             pcd->Transform(transf);
             merge(pointCloud, pcd, transf.inverse(), maskNormals, cameraIntrinsics);
+
         }
 
         //************ ALIGNMENT ************//
@@ -177,6 +177,8 @@ int main(int argc, char *argv[]){
         if(i == finalFrame || key == 'z'){
 
             vis.Run();
+            vis.UpdateGeometry();
+            vis.UpdateRender();
             vis.PollEvents();
             vis.DestroyVisualizerWindow();
 

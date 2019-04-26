@@ -83,7 +83,7 @@ public:
         //level comes in reverse order 2 > 1 > 0
         double intScales[] = { 0.0001, 0.0001, 0.0001 };
         double depScales[] = { 0.001, 0.001, 0.001 };
-        double gradLevels[] = {0.0004, 0.0004, 0.0009};
+
         Mat residualImage = Mat::zeros(refIntImage.rows * 2, refIntImage.cols, CV_64FC1);
         Mat actIntDerivX = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
         Mat actIntDerivY = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
@@ -239,7 +239,7 @@ public:
                     dDep = abs(dDep) > 0.4 ? 0 : dDep;
                     dDep = pixDep1 == 0 ? 0 : dDep;
                     dDep = pixDep2 == 0 ? 0 : dDep;
-                    double wDep = *filteredNormals.ptr<double>(transfR_int, transfC_int);                    
+                    double wDep = *filteredNormals.ptr<double>(transfR_int, transfC_int);
 
                     jacobians(i,0)   = wDep * jacobianDepth(0,0);
                     jacobians(i,1)   = wDep * jacobianDepth(0,1);
@@ -266,18 +266,18 @@ public:
 
         if (level == 0){
             resize(residualImage, residualImage, Size(residualImage.cols/2, residualImage.rows/2));
-//            Matrix4d Id = Matrix4d::Identity();
-//            Mat m1 = transfAndProject(refDepImage, 1, Rt, intrinsecs);
-//            Mat m2 = transfAndProject(actDepImage, 1, Id, intrinsecs);
-//            Mat m3;
-//            m3 = m2 - m1;
-//            threshold(m3, m3, 0.001, 0, THRESH_TOZERO_INV);
-//            //            Scalar mean, stddev;
-//            //            meanStdDev(residualImage, mean, stddev);
-//            //            cerr << "Mean " << mean[0] << " Stddev " << stddev[0] << endl;
-//            m3 *= 500;
-//            imshow("difference", m3);
-//            waitKey(1);
+            //            Matrix4d Id = Matrix4d::Identity();
+            //            Mat m1 = transfAndProject(refDepImage, 1, Rt, intrinsecs);
+            //            Mat m2 = transfAndProject(actDepImage, 1, Id, intrinsecs);
+            //            Mat m3;
+            //            m3 = m2 - m1;
+            //            threshold(m3, m3, 0.001, 0, THRESH_TOZERO_INV);
+            //            //            Scalar mean, stddev;
+            //            //            meanStdDev(residualImage, mean, stddev);
+            //            //            cerr << "Mean " << mean[0] << " Stddev " << stddev[0] << endl;
+            //            m3 *= 500;
+            //            imshow("difference", m3);
+            //            waitKey(1);
         }
 
         imshow("Residual", residualImage);
@@ -329,16 +329,16 @@ public:
     bool doSingleIteration(MatrixXd &residuals, MatrixXd &jacobians,
                            double lambda, double threshold){
 
-        //        double chi = residuals.squaredNorm();
-        //        cerr << "chi squared " << chi << endl;
-        //        if(chi > threshold){
-        //            cerr << "Escalando o erro " << endl;
-        //            residuals *= sqrt(threshold/chi);
-        //        }
+        double chi = residuals.squaredNorm();
+        cerr << "chi squared " << chi << endl;
+        if(chi > threshold){
+            cerr << "Escalando o erro " << endl;
+            residuals *= sqrt(threshold/chi);
+        }
         MatrixXd gradients = jacobians.transpose() * residuals;
         MatrixXd hessian = jacobians.transpose() * jacobians;
         actualPoseVector6D -= lambda * hessian.ldlt().solve(gradients);
-//        actualPoseVector6D -= lambda * (hessian.inverse() * gradients);
+        //        actualPoseVector6D -= lambda * (hessian.inverse() * gradients);
         //Gets best transform until now
         double gradientNorm = gradients.norm();
         if(gradientNorm < lastGradientNorm){
@@ -377,7 +377,7 @@ public:
             cerr << "Iniciando de:" << endl;
             cerr << getMatrixRtFromPose6D(actualPoseVector6D);
             double lambdas[] = { 1, 1, 1 };
-            double threshold[] = { 1000, 160, 80 };
+            double threshold[] = { 80, 160, 80 };
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
@@ -397,7 +397,7 @@ public:
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
-                                             residuals, jacobians, 0, true , false);
+                                             residuals, jacobians, 0, false, true);
                 doSingleIteration(residuals, jacobians, 1, 200);
             }
         }
