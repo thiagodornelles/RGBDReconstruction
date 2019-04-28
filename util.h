@@ -226,7 +226,7 @@ void merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFram
         return;
     }
 
-    int confThresh = 6;
+    int confThresh = 3;
     //Aging of points
     for (int i = 0; i < model->points_.size(); ++i) {
         model->frameCounter_[i]++;
@@ -266,7 +266,7 @@ void merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFram
                 Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
 
                 //Two points close enough to get fused
-                if(abs(modelPoint(2) - framePoint(2)) < 0.02){
+                if(abs(modelPoint(2) - framePoint(2)) < 0.05){
                     model->points_[modIdx] = (modelPoint * 0.5 + framePoint * 0.5);
                     model->colors_[modIdx] = (modelColor * 0.5 + frameColor * 0.5);
                     model->hitCounter_[modIdx]++;
