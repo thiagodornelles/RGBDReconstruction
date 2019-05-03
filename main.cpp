@@ -42,9 +42,9 @@ int main(int argc, char *argv[]){
     Eigen::Matrix4d initCam = Eigen::Matrix4d::Identity();
 
     //Kinect 360 unprojection
-    PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
+    //    PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
     //Mickey Dataset
-    //    PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
+    PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
     //CORBS
     //        PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 468.60, 468.61, 318.27, 243.99);
     //Kinect v2
@@ -58,13 +58,13 @@ int main(int argc, char *argv[]){
     double fovY = 2 * atan(480 / (2 * cameraIntrinsics.GetFocalLength().second)) * 180.0 / CV_PI;
     cerr << "FOVy " << fovY << endl;
     cerr << "FOVx " << fovX << endl;
-    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
+    //    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
     //    string datasetFolder = "/Users/thiago/Datasets/rgbd_dataset_freiburg1_plant/";
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
     //    string datasetFolder = "/Users/thiago/Datasets/car/";
-    //    string datasetFolder = "/Users/thiago/Datasets/desk/";
-    //    string datasetFolder = "/Users/thiago/Datasets/sculp/";
+    //        string datasetFolder = "/Users/thiago/Datasets/desk/";
+    string datasetFolder = "/Users/thiago/Datasets/sculp/";
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
@@ -126,7 +126,7 @@ int main(int argc, char *argv[]){
         cvtColor(rgb2, gray2, CV_BGR2GRAY);
 
         threshold(depth1, depth1, 2000, 65535, THRESH_TOZERO_INV);
-        //        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(5, 5)));
+//        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(5, 5)));
 
         Mat grayOut, depthOut;
         hconcat(gray1, gray2, grayOut);
@@ -141,7 +141,7 @@ int main(int argc, char *argv[]){
         Mat tmpDepth1, tmpDepth2;
         depth1.convertTo(tmpDepth1, CV_64FC1, 0.0002);
         //        depth2.convertTo(tmpDepth2, CV_64FC1, 0.0002);
-        Mat maskNormals = getMaskOfNormalsFromDepth(tmpDepth1, cameraIntrinsics, 0, false);
+        Mat maskNormals = getMaskOfNormalsFromDepth(tmpDepth1, cameraIntrinsics, 0, true);
         imshow("maskNormals", maskNormals);
 
         rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),

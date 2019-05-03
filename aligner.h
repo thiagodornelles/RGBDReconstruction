@@ -99,9 +99,9 @@ public:
         imshow("wDep", filteredNormals);
 
         //Extrinsecs
-        //        double x = bestPoseVector6D(0);
-        //        double y = bestPoseVector6D(1);
-        //        double z = bestPoseVector6D(2);
+        double x = bestPoseVector6D(0);
+        double y = bestPoseVector6D(1);
+        double z = bestPoseVector6D(2);
         double yaw = bestPoseVector6D(3);
         double pitch = bestPoseVector6D(4);
         double roll = bestPoseVector6D(5);
@@ -114,6 +114,7 @@ public:
 
         //Matrix |R|t| from 6D vector
         Matrix4d Rt = getMatrixRtFromPose6D(actualPoseVector6D);
+        //        Matrix4d Rt = getPoseExponentialMap(actualPoseVector6D);
 
         //Calculation of jacobians and residuals
         int nCols = refIntImage.cols;
@@ -164,45 +165,60 @@ public:
                 double py = refPoint3D(1);
                 double pz = refPoint3D(2);
 
-                //Derivative with respect to x
+                //Derivative w.r.t x
                 jacobianRt(0,0) = 1.;
                 jacobianRt(1,0) = 0.;
                 jacobianRt(2,0) = 0.;
 
-                //Derivative with respect to y
+                //Derivative w.r.t y
                 jacobianRt(0,1) = 0.;
                 jacobianRt(1,1) = 1.;
                 jacobianRt(2,1) = 0.;
 
-                //Derivative with respect to z
+                //Derivative w.r.t z
                 jacobianRt(0,2) = 0.;
                 jacobianRt(1,2) = 0.;
                 jacobianRt(2,2) = 1.;
 
-                //Derivative with respect to yaw
+                //                //Derivative w.r.t yaw
+                //                jacobianRt(0,3) = 0;
+                //                jacobianRt(1,3) = pz;
+                //                jacobianRt(2,3) = -py;
+
+                //                //Derivative w.r.t pitch
+                //                jacobianRt(0,4) = -pz;
+                //                jacobianRt(1,4) = 0;
+                //                jacobianRt(2,4) = px;
+
+                //                //Derivative w.r.t roll
+                //                jacobianRt(0,5) = py;
+                //                jacobianRt(1,5) = -px;
+                //                jacobianRt(2,5) = 0;
+
+                //Derivative w.r.t yaw
                 jacobianRt(0,3) = py*(-sin(pitch)*sin(roll)*sin(yaw)-cos(roll)*cos(yaw))+pz*(sin(roll)*cos(yaw)-sin(pitch)*cos(roll)*sin(yaw))-cos(pitch)*px*sin(yaw);
                 jacobianRt(1,3) = pz*(sin(roll)*sin(yaw)+sin(pitch)*cos(roll)*cos(yaw))+py*(sin(pitch)*sin(roll)*cos(yaw)-cos(roll)*sin(yaw))+cos(pitch)*px*cos(yaw);
                 jacobianRt(2,3) = 0.;
 
-                //Derivative with respect to pitch
+                //Derivative w.r.t pitch
                 jacobianRt(0,4) = cos(pitch)*py*sin(roll)*cos(yaw)+cos(pitch)*pz*cos(roll)*cos(yaw)-sin(pitch)*px*cos(yaw);
                 jacobianRt(1,4) = cos(pitch)*py*sin(roll)*sin(yaw)+cos(pitch)*pz*cos(roll)*sin(yaw)-sin(pitch)*px*sin(yaw);
                 jacobianRt(2,4) = -sin(pitch)*py*sin(roll)-sin(pitch)*pz*cos(roll)-cos(pitch)*px;
 
-                //Derivative with respect to roll
+                //Derivative w.r.t roll
                 jacobianRt(0,5) = py*(sin(roll)*sin(yaw)+sin(pitch)*cos(roll)*cos(yaw))+pz*(cos(roll)*sin(yaw)-sin(pitch)*sin(roll)*cos(yaw));
                 jacobianRt(1,5) = pz*(-sin(pitch)*sin(roll)*sin(yaw)-cos(roll)*cos(yaw))+py*(sin(pitch)*cos(roll)*sin(yaw)-sin(roll)*cos(yaw));
                 jacobianRt(2,5) = cos(pitch)*py*cos(roll)-cos(pitch)*pz*sin(roll);
 
-                //Derivative with respect to x
+                //Derivative w.r.t x
                 jacobianProj(0,0) = fx*invTransfZ;
                 jacobianProj(1,0) = 0.;
 
-                //Derivative with respect to y
+                //Derivative w.r.t y
                 jacobianProj(0,1) = 0.;
                 jacobianProj(1,1) = fy*invTransfZ;
 
-                //Derivative with respect to z
+                //Derivative w.r.t z
                 jacobianProj(0,2) = -(fx*trfPoint3D(0))*invTransfZ*invTransfZ;
                 jacobianProj(1,2) = -(fy*trfPoint3D(1))*invTransfZ*invTransfZ;
 
@@ -290,6 +306,55 @@ public:
             bestPoseVector6D = actualPoseVector6D;
         }
         //        cerr << "Count " << count / (double)(nCols * nRows) << " %" << endl;
+    }
+
+    Matrix4d getPoseExponentialMap(VectorXd poseVector6D){
+        Matrix4d pose = Matrix4d::Identity();
+        double x = poseVector6D(0);
+        double y = poseVector6D(1);
+        double z = poseVector6D(2);
+        double yaw = poseVector6D(3);
+        double pitch = poseVector6D(4);
+        double roll = poseVector6D(5);
+
+        Vector3d w, t;
+        w << yaw, pitch, roll;
+        t << x, y, z;
+
+        double phi = w.norm();
+
+        if( phi > 100. * std::numeric_limits<double>::epsilon()){
+            Matrix3d hat;
+            hat(0,1) = 0;
+            hat(1,1) = z;
+            hat(2,1) = -y;
+            hat(0,2) = -z;
+            hat(1,2) = 0;
+            hat(2,2) = x;
+            hat(0,3) = y;
+            hat(1,3) = -x;
+            hat(2,3) = 0;
+
+            //RODRIGUES
+            Matrix3d R = Matrix3d::Identity();
+            if( phi > 100. * std::numeric_limits<double>::epsilon() )
+            {
+                double inv_phi = 1. / phi;
+                R += inv_phi * hat * sin(phi) + (inv_phi * inv_phi) *
+                        hat * hat * (1. - cos(phi));
+            }
+            pose.block( 0, 0, 3, 3 ) = R;
+            double inv_phi = 1. / phi;
+            Matrix3d V = Matrix3d::Identity() +
+                    ( inv_phi * inv_phi ) * ( 1. - cos( phi )  ) * hat +
+                    ( inv_phi * inv_phi * inv_phi ) * ( phi - sin( phi ) ) * hat * hat;
+            pose.block( 0, 3, 3, 1 ) = V * t;
+        }
+        else{
+            pose.block( 0, 3, 3, 1 ) = t;
+        }
+        cerr << pose << endl;
+        return pose;
     }
 
     //*********** Compute the rigid transformation matrix from the poseVector6D ************
