@@ -76,6 +76,7 @@ public:
 
     void computeResidualsAndJacobians(Mat &refIntImage, Mat &refDepImage,
                                       Mat &actIntImage, Mat &actDepImage,
+                                      Mat &normalsWeight,
                                       MatrixXd &residuals, MatrixXd &jacobians,
                                       int level, bool color = true, bool depth = true)
     {
@@ -95,13 +96,12 @@ public:
         Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, depScales[level], 0.0, cv::BORDER_DEFAULT);
         Scharr(actDepImage, actDepDerivY, CV_64F, 0, 1, depScales[level], 0.0, cv::BORDER_DEFAULT);
 
-        Mat filteredNormals = getMaskOfNormalsFromDepth(actDepImage, intrinsecs, level, false, 1.3);
-        imshow("wDep", filteredNormals);
+        imshow("wDep", normalsWeight);
 
         //Extrinsecs
-        double x = bestPoseVector6D(0);
-        double y = bestPoseVector6D(1);
-        double z = bestPoseVector6D(2);
+        //        double x = bestPoseVector6D(0);
+        //        double y = bestPoseVector6D(1);
+        //        double z = bestPoseVector6D(2);
         double yaw = bestPoseVector6D(3);
         double pitch = bestPoseVector6D(4);
         double roll = bestPoseVector6D(5);
@@ -147,6 +147,16 @@ public:
                 gradPixDepth(0,1) = *actDepDerivY.ptr<double>(y, x);
 
                 double wInt = 1;
+//                double wInt = gradPixIntensity(0,0) * gradPixIntensity(0,0);
+//                wInt += gradPixIntensity(0,1) * gradPixIntensity(0,1);
+//                wInt = sqrt(wInt);
+//                if (wInt > 0.001){
+//                    wInt = 1;
+//                    count++;
+//                }
+//                else{
+//                    wInt = 0;
+//                }
 
                 //******* BEGIN Unprojection of DepthMap ********
                 Vector4d refPoint3D;
@@ -255,7 +265,8 @@ public:
                     dDep = abs(dDep) > 0.4 ? 0 : dDep;
                     dDep = pixDep1 == 0 ? 0 : dDep;
                     dDep = pixDep2 == 0 ? 0 : dDep;
-                    double wDep = *filteredNormals.ptr<double>(transfR_int, transfC_int);
+                    double wDep = *normalsWeight.ptr<double>(transfR_int, transfC_int);
+                    //                    double wDep = 0;
 
                     jacobians(i,0)   = wDep * jacobianDepth(0,0);
                     jacobians(i,1)   = wDep * jacobianDepth(0,1);
@@ -305,7 +316,7 @@ public:
             cerr << "best pose summation: " << sum << endl;
             bestPoseVector6D = actualPoseVector6D;
         }
-        //        cerr << "Count " << count / (double)(nCols * nRows) << " %" << endl;
+        cerr << "Count " << count / (double)(nCols * nRows) << " %" << endl;
     }
 
     Matrix4d getPoseExponentialMap(VectorXd poseVector6D){
@@ -417,6 +428,16 @@ public:
     void getPoseTransform(Mat &refGray, Mat &refDepth, Mat &actGray, Mat &actDepth,
                           bool refinement){
 
+        //Generate weight based on normal map
+        //Mat normalsWeight = getMaskOfNormalsFromDepth(actDepImage, intrinsecs, level, false, 1.3);
+        Mat normalsWeight = getNormalMap(actDepth, false, 1.3);
+        Mat pyrWNormals[3];
+        pyrWNormals[0] = normalsWeight;
+        int rows = refGray.rows;
+        int cols = refGray.cols;
+        resize(normalsWeight, pyrWNormals[1], Size(cols/2, rows/2), 0, 0, INTER_NEAREST);
+        resize(normalsWeight, pyrWNormals[2], Size(cols/4, rows/4), 0, 0, INTER_NEAREST);
+
         refDepth.convertTo(refDepth, CV_64FC1, 0.0002);
         actDepth.convertTo(actDepth, CV_64FC1, 0.0002);
         Mat tempRefGray, tempActGray;
@@ -436,7 +457,7 @@ public:
             resize(actGray, tempActGray, Size(cols, rows), 0, 0, INTER_NEAREST);
             resize(actDepth, tempActDepth, Size(cols, rows), 0, 0, INTER_NEAREST);
 
-            Mat residualImage;
+//            Mat residualImage;
             this->lastGradientNorm = DBL_MAX;
             this->sum = DBL_MAX;
             cerr << "Iniciando de:" << endl;
@@ -448,6 +469,7 @@ public:
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
+                                             pyrWNormals[l],
                                              residuals, jacobians, l);
                 doSingleIteration(residuals, jacobians, lambdas[l], threshold[l]);
             }
@@ -462,6 +484,7 @@ public:
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
+                                             pyrWNormals[0],
                                              residuals, jacobians, 0, false, true);
                 doSingleIteration(residuals, jacobians, 1, 200);
             }

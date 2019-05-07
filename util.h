@@ -64,9 +64,110 @@ Mat convertDepthTo16bit(std::shared_ptr<Image> depth){
     return depth16;
 }
 
+Mat getNormalMap(Mat &depth, bool dilateBorders = false, double angleThres = 1.222){
+    Mat normals = Mat::zeros(depth.rows, depth.cols, CV_32FC3);
+    Mat temp;
+    depth.convertTo(temp, CV_32FC1, 0.0002);
+    Mat filteredDepth;
+//    bilateralFilter(temp, filteredDepth, 3, 1, 1);
+    GaussianBlur(temp, filteredDepth, Size(3,3), 1);
+    for(int x = 1; x < depth.cols - 1; ++x){
+        for(int y = 1; y < depth.rows - 1; ++y){
+            if (*filteredDepth.ptr<float>(y, x) == 0)
+                continue;
+
+            Vec3f t(x,y-1, *filteredDepth.ptr<float>(y-1, x) * 5000);
+            Vec3f l(x-1,y, *filteredDepth.ptr<float>(y, x-1) * 5000);
+            Vec3f c(x,y, *filteredDepth.ptr<float>(y, x) * 5000);
+
+            Vec3f d = (l-c).cross(t-c);
+
+            Vec3f n = normalize(d);
+            *normals.ptr<Vec3f>(y,x) = n;
+        }
+    }
+
+    Mat filtered = Mat::zeros(normals.rows, normals.cols, CV_64FC1);
+    Vec3f camAxis (0, 0, 1);
+    normals.forEach<Vec3f>([&](Vec3f &pixel, const int *pos) -> void
+    {
+        double uv = pixel.dot(camAxis);
+        uv = cos(acos(uv) * angleThres);
+        *filtered.ptr<double>(pos[0], pos[1]) = uv < 0 ? 0 : uv;
+    }
+    );
+
+    if (dilateBorders){
+        erode(filtered, filtered, getStructuringElement(MORPH_CROSS, Size(3, 3)));
+    }
+
+    return filtered;
+}
+
+
+Mat getNormalMapFromPointCloud(Image &depth, PinholeCameraIntrinsic intrinsics,
+                               bool dilateBorders = false, double angleThres = 1.222){
+    int width = intrinsics.width_;
+    int height = intrinsics.height_;
+
+    double cx = intrinsics.GetPrincipalPoint().first;
+    double cy = intrinsics.GetPrincipalPoint().second;
+    double fx = intrinsics.GetFocalLength().first;
+    double fy = intrinsics.GetFocalLength().second;
+
+    Mat normals(depth.height_, depth.width_, CV_64FC3);
+    shared_ptr<PointCloud> pointCloud = CreatePointCloudFromDepthImage(depth, intrinsics);
+    EstimateNormals(*pointCloud);
+    OrientNormalsTowardsCameraLocation(*pointCloud);
+
+    for (int i = 0; i < pointCloud->points_.size(); i++) {
+
+        Eigen::Vector3d pcdPoint = pointCloud->points_[i];
+        Eigen::Vector4d refPoint3d;
+        refPoint3d(0) = pcdPoint(0);
+        refPoint3d(1) = pcdPoint(1);
+        refPoint3d(2) = pcdPoint(2);
+        refPoint3d(3) = 1;
+
+        double invTransfZ = 1.0 / refPoint3d(2);
+
+        //******* BEGIN Projection of PointCloud on the image plane ********
+        double transfC = (refPoint3d(0) * fx) * invTransfZ + cx;
+        double transfR = (refPoint3d(1) * fy) * invTransfZ + cy;
+        int transfR_int = static_cast<int>(round(transfR));
+        int transfC_int = static_cast<int>(round(transfC));
+        //******* END Projection of PointCloud on the image plane ********
+
+        //Checks if this pixel projects inside of the image
+        if((transfR_int >= 0 && transfR_int < height) &&
+                (transfC_int >= 0 && transfC_int < width)) {
+
+            Eigen::Vector3d n = pointCloud->normals_[i];
+            Vec3d normal(n(0), n(1), n(2));
+            *normals.ptr<Vec3d>(transfR_int, transfC_int) = normal;
+        }
+    }
+
+    Mat filtered = Mat::zeros(normals.rows, normals.cols, CV_64FC1);
+    Vec3d camAxis (0, 0, -1);
+    normals.forEach<Vec3d>([&](Vec3d &pixel, const int *pos) -> void
+    {
+        double uv = isnan(pixel[0]) ? 0 : pixel.dot(camAxis);
+        uv = cos(acos(uv) * angleThres);
+        filtered.at<double>(pos[0], pos[1]) = uv < 0 ? 0 : uv;
+    }
+    );
+
+    if (dilateBorders){
+        erode(filtered, filtered, getStructuringElement(MORPH_CROSS, Size(3, 3)));
+    }
+
+    return filtered;
+}
+
 // Level comes in reverse order 2 > 1 > 0
 Mat getMaskOfNormalsFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsics, int level,
-                              bool dilateBorders = false, double angleFilter = 1.222){
+                              bool dilateBorders = false, double angleThres = 1.222){
 
     double scaleFactor = 1.0 / pow(2, level);
     double nearbNormals[] = { 7, 7, 3};
@@ -89,10 +190,10 @@ Mat getMaskOfNormalsFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsics, int
     Mat filtered = Mat::zeros(normals.rows, normals.cols, CV_64FC1);
     Vec3d camAxis (0, 0, -1);
     normals.forEach<Vec3d>(
-                [&filtered, &camAxis, &angleFilter, &level](Vec3d &pixel, const int *pos) -> void
+                [&filtered, &camAxis, &angleThres, &level](Vec3d &pixel, const int *pos) -> void
     {
         double uv = isnan(pixel[0]) ? 0 : pixel.dot(camAxis);
-        uv = cos(acos(uv) * angleFilter);
+        uv = cos(acos(uv) * angleThres);
         filtered.at<double>(pos[0], pos[1]) = uv < 0 ? 0 : uv;
     }
     );
@@ -213,8 +314,8 @@ Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeC
 }
 
 void merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFrame,
-           Eigen::Matrix4d transf, Mat normalMap,
-           PinholeCameraIntrinsic intrinsics){
+           Eigen::Matrix4d transf, PinholeCameraIntrinsic intrinsics,
+           Mat normalMap = Mat()){
 
     //At first model comes empty then will be fullfilled with first frame's points
     if(model->IsEmpty()){
@@ -235,7 +336,6 @@ void merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFram
             model->colors_.erase(model->colors_.begin() + i);
             model->frameCounter_.erase(model->frameCounter_.begin() + i);
             model->hitCounter_.erase(model->hitCounter_.begin() + i);
-//            model->colors_[i] = Eigen::Vector3d(0,1,0);
         }
     }
 
@@ -248,12 +348,14 @@ void merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFram
     int fused = 0;
     int added2 = 0;
 
-
     for (int r = 0; r < modelIdx.rows; ++r) {
         for (int c = 0; c < modelIdx.cols; ++c) {
             int modIdx = *modelIdx.ptr<int>(r, c);
             int lastIdx = *lastFrameIdx.ptr<int>(r, c);
-            double normal = *normalMap.ptr<double>(r, c);
+
+            double normal = 1;
+            if(normalMap.rows != 0)
+                normal = *normalMap.ptr<double>(r, c);
 
             if(normal <= 0)
                 continue;

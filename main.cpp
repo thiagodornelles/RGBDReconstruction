@@ -63,13 +63,13 @@ int main(int argc, char *argv[]){
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
     //    string datasetFolder = "/Users/thiago/Datasets/car/";
-    //        string datasetFolder = "/Users/thiago/Datasets/desk/";
+    //    string datasetFolder = "/Users/thiago/Datasets/desk/";
     string datasetFolder = "/Users/thiago/Datasets/sculp/";
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
-    int initFrame = 0;
+    int initFrame = 100;
     int finalFrame = 6000;
 
     shared_ptr<PointCloudExtended> pointCloud = std::make_shared<PointCloudExtended>();
@@ -137,11 +137,8 @@ int main(int argc, char *argv[]){
         imshow("depth", depthOut * 10);
 
         //Visualization
-        shared_ptr<RGBDImage> rgbdImage;
-        Mat tmpDepth1, tmpDepth2;
-        depth1.convertTo(tmpDepth1, CV_64FC1, 0.0002);
-        //        depth2.convertTo(tmpDepth2, CV_64FC1, 0.0002);
-        Mat maskNormals = getMaskOfNormalsFromDepth(tmpDepth1, cameraIntrinsics, 0, true);
+        shared_ptr<RGBDImage> rgbdImage;        
+        Mat maskNormals = getNormalMap(depth1, true);
         imshow("maskNormals", maskNormals);
 
         rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
@@ -153,8 +150,7 @@ int main(int argc, char *argv[]){
         transf = transf * aligner.getMatrixRtFromPose6D(aligner.getPose6D()).inverse();
         if (!generateMesh){
             pcd->Transform(transf);
-            merge(pointCloud, pcd, transf.inverse(), maskNormals, cameraIntrinsics);
-
+            merge(pointCloud, pcd, transf.inverse(), cameraIntrinsics);
         }
 
         //************ ALIGNMENT ************//
