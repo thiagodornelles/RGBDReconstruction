@@ -42,9 +42,9 @@ int main(int argc, char *argv[]){
     Eigen::Matrix4d initCam = Eigen::Matrix4d::Identity();
 
     //Kinect 360 unprojection
-    //    PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
+    PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
     //Mickey Dataset
-    PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
+    //PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
     //CORBS
     //        PinholeCameraIntrinsic cameraIntrinsics = PinholeCameraIntrinsic(640, 480, 468.60, 468.61, 318.27, 243.99);
     //Kinect v2
@@ -58,18 +58,18 @@ int main(int argc, char *argv[]){
     double fovY = 2 * atan(480 / (2 * cameraIntrinsics.GetFocalLength().second)) * 180.0 / CV_PI;
     cerr << "FOVy " << fovY << endl;
     cerr << "FOVx " << fovX << endl;
-    //    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
+        string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
     //    string datasetFolder = "/Users/thiago/Datasets/rgbd_dataset_freiburg1_plant/";
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
     //    string datasetFolder = "/Users/thiago/Datasets/car/";
     //    string datasetFolder = "/Users/thiago/Datasets/desk/";
-    string datasetFolder = "/Users/thiago/Datasets/sculp/";
+//    string datasetFolder = "/media/thiago/BigStorage/Datasets/sculp/";
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
-    int initFrame = 100;
+    int initFrame = 30;
     int finalFrame = 6000;
 
     shared_ptr<PointCloudExtended> pointCloud = std::make_shared<PointCloudExtended>();
@@ -127,6 +127,7 @@ int main(int argc, char *argv[]){
 
         threshold(depth1, depth1, 2000, 65535, THRESH_TOZERO_INV);
 //        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(5, 5)));
+//        erode(depth2, depth2, getStructuringElement(MORPH_RECT, Size(5, 5)));
 
         Mat grayOut, depthOut;
         hconcat(gray1, gray2, grayOut);
@@ -137,8 +138,11 @@ int main(int argc, char *argv[]){
         imshow("depth", depthOut * 10);
 
         //Visualization
-        shared_ptr<RGBDImage> rgbdImage;        
-        Mat maskNormals = getNormalMap(depth1, true);
+        shared_ptr<RGBDImage> rgbdImage;
+        //Mat maskNormals = getNormalMap(depth1, true);
+        Mat depthTmp;
+        depth1.convertTo(depthTmp, CV_64FC1, 0.0002);
+        Mat maskNormals = getMaskOfNormalsFromDepth(depthTmp, cameraIntrinsics, 0, false);
         imshow("maskNormals", maskNormals);
 
         rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
@@ -155,7 +159,7 @@ int main(int argc, char *argv[]){
 
         //************ ALIGNMENT ************//
         auto start = high_resolution_clock::now();
-        aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
+        aligner.getPoseTransform(gray1, depth1, gray2, depth2, true);
         auto stop = high_resolution_clock::now();
         cerr << "Obtida transf:\n" << aligner.getMatrixRtFromPose6D(aligner.getPose6D()) << endl;
 
@@ -172,7 +176,7 @@ int main(int argc, char *argv[]){
         char key = waitKey(100);
         if(key == '1') imwrite("teste.png", depthOut);
         if(i == finalFrame || key == 'z'){
-
+            removeUnstablePoints(pointCloud);
             vis.Run();
             vis.UpdateGeometry();
             vis.UpdateRender();

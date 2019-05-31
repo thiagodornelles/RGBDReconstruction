@@ -17,6 +17,8 @@ using namespace cv;
 using namespace std;
 using namespace rgbd;
 
+const int confThresh = 6;
+
 shared_ptr<RGBDImage> ReadRGBDImage(
         const char* colorFilename, const char* depthFilename,
         const PinholeCameraIntrinsic &intrinsic, double depthTrunc,
@@ -194,7 +196,7 @@ Mat getMaskOfNormalsFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsics, int
     {
         double uv = isnan(pixel[0]) ? 0 : pixel.dot(camAxis);
         uv = cos(acos(uv) * angleThres);
-        filtered.at<double>(pos[0], pos[1]) = uv < 0 ? 0 : uv;
+        filtered.at<double>(pos[0], pos[1]) = uv < 0 ? 0 : uv + 0.2;
     }
     );
 
@@ -313,6 +315,22 @@ Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeC
     return projected;
 }
 
+void removeUnstablePoints(shared_ptr<PointCloudExtended> model){
+    //Aging of points
+    int removed = 0;
+    for (int i = 0; i < model->points_.size(); ++i) {
+        if(model->hitCounter_[i] < confThresh){
+            model->points_.erase(model->points_.begin() + i);
+            model->colors_.erase(model->colors_.begin() + i);
+            model->frameCounter_.erase(model->frameCounter_.begin() + i);
+            model->hitCounter_.erase(model->hitCounter_.begin() + i);
+            removed++;
+        }
+    }
+    cerr << removed << " points removed\n";
+}
+
+
 void merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFrame,
            Eigen::Matrix4d transf, PinholeCameraIntrinsic intrinsics,
            Mat normalMap = Mat()){
@@ -327,7 +345,7 @@ void merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFram
         return;
     }
 
-    int confThresh = 3;
+    int removed = 0;
     //Aging of points
     for (int i = 0; i < model->points_.size(); ++i) {
         model->frameCounter_[i]++;
@@ -336,13 +354,15 @@ void merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFram
             model->colors_.erase(model->colors_.begin() + i);
             model->frameCounter_.erase(model->frameCounter_.begin() + i);
             model->hitCounter_.erase(model->hitCounter_.begin() + i);
+            removed++;
         }
     }
+    cerr << removed << " points removed\n";
 
     Mat depth1, depth2;
     Mat modelIdx, lastFrameIdx;
-    projectPointCloud(*model, 5, transf, intrinsics, depth1, modelIdx);
-    projectPointCloud(*lastFrame, 5, transf, intrinsics, depth2, lastFrameIdx);
+    projectPointCloud(*model, 1, transf, intrinsics, depth1, modelIdx);
+    projectPointCloud(*lastFrame, 1, transf, intrinsics, depth2, lastFrameIdx);
 
     int added1 = 0;
     int fused = 0;
@@ -352,6 +372,10 @@ void merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFram
         for (int c = 0; c < modelIdx.cols; ++c) {
             int modIdx = *modelIdx.ptr<int>(r, c);
             int lastIdx = *lastFrameIdx.ptr<int>(r, c);
+
+//            if(model->hitCounter_[modIdx] >= confThresh){
+//                continue;
+//            }
 
             double normal = 1;
             if(normalMap.rows != 0)
@@ -367,8 +391,8 @@ void merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFram
                 Eigen::Vector3d framePoint = lastFrame->points_[lastIdx];
                 Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
 
-                //Two points close enough to get fused
-                if(abs(modelPoint(2) - framePoint(2)) < 0.05){
+                //Two points close enough to get fused                
+                if(abs(modelPoint(2) - framePoint(2)) < 0.01){
                     model->points_[modIdx] = (modelPoint * 0.5 + framePoint * 0.5);
                     model->colors_[modIdx] = (modelColor * 0.5 + frameColor * 0.5);
                     model->hitCounter_[modIdx]++;
