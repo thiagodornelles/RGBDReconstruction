@@ -1,7 +1,8 @@
-#include <Core/Core.h>
-#include <Geometry/Geometry.h>
+#include <Open3D/Open3D.h>
+#include <Open3D/Geometry/PointCloud.h>
 
 using namespace open3d;
+using namespace geometry;
 using namespace std;
 
 class PointCloudExtended : public PointCloud

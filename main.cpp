@@ -4,10 +4,10 @@
 #include <string>
 #include <chrono>
 
-#include <Core/Core.h>
-#include <Core/Utility/Helper.h>
-#include <IO/IO.h>
-#include <Visualization/Visualization.h>
+#include <Open3D/Open3D.h>
+#include <Open3D/Utility/Helper.h>
+#include <Open3D/IO/ClassIO/ImageIO.h>
+#include <Open3D/Visualization/Visualizer/Visualizer.h>
 #include <Integration/ScalableTSDFVolume.h>
 #include <Geometry/Geometry.h>
 #include <Geometry/PointCloud.h>
@@ -21,6 +21,8 @@
 #include "aligner.h"
 
 using namespace open3d;
+using namespace open3d::integration;
+using namespace open3d::visualization;
 using namespace std;
 using namespace cv;
 using namespace std::chrono;
@@ -111,6 +113,7 @@ int main(int argc, char *argv[]){
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
 
             if (!generateMesh){
+                geometry::RemoveStatisticalOutliers(*pointCloud, 20, 0.0001);
                 projectPointCloud(*pointCloud, maxDistProjection, transf.inverse(),
                                   cameraIntrinsics, depth2, index2);
             }
@@ -142,19 +145,19 @@ int main(int argc, char *argv[]){
         //Mat maskNormals = getNormalMap(depth1, true);
         Mat depthTmp;
         depth1.convertTo(depthTmp, CV_64FC1, 0.0002);
-        Mat maskNormals = getMaskOfNormalsFromDepth(depthTmp, cameraIntrinsics, 0, false);
-        imshow("maskNormals", maskNormals);
+//        Mat maskNormals = getMaskOfNormalsFromDepth(depthTmp, cameraIntrinsics, 0, true, 1.5);
+//        imshow("maskNormals", maskNormals);
 
+//        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
+//                                  cameraIntrinsics, maxDistProjection, &maskNormals);
         rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
-                                  cameraIntrinsics, maxDistProjection, &maskNormals);
-        //        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
-        //                                  cameraIntrinsics, maxDistProjection);
+                                  cameraIntrinsics, maxDistProjection);
 
         shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, cameraIntrinsics, initCam);
         transf = transf * aligner.getMatrixRtFromPose6D(aligner.getPose6D()).inverse();
         if (!generateMesh){
             pcd->Transform(transf);
-            merge(pointCloud, pcd, transf.inverse(), cameraIntrinsics);
+            merge(pointCloud, pcd, transf.inverse(), cameraIntrinsics);            
         }
 
         //************ ALIGNMENT ************//

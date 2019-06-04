@@ -1,11 +1,12 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include <Core/Core.h>
-#include <Core/Geometry/PointCloud.h>
-#include <Core/Geometry/RGBDImage.h>
-#include <Core/Utility/Helper.h>
-#include <IO/IO.h>
+#include <Open3D.h>
+#include <Geometry/PointCloud.h>
+#include <Geometry/RGBDImage.h>
+#include <Utility/Helper.h>
+#include <Open3D/IO/ClassIO/ImageIO.h>
+#include <Open3D/Camera/PinholeCameraIntrinsic.h>
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/rgbd.hpp>
@@ -13,6 +14,9 @@
 #include "pointcloudextend.h"
 
 using namespace open3d;
+using namespace open3d::io;
+using namespace open3d::camera;
+using namespace open3d::utility;
 using namespace cv;
 using namespace std;
 using namespace rgbd;
@@ -196,7 +200,7 @@ Mat getMaskOfNormalsFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsics, int
     {
         double uv = isnan(pixel[0]) ? 0 : pixel.dot(camAxis);
         uv = cos(acos(uv) * angleThres);
-        filtered.at<double>(pos[0], pos[1]) = uv < 0 ? 0 : uv + 0.2;
+        filtered.at<double>(pos[0], pos[1]) = uv < 0 ? 0 : uv;
     }
     );
 
@@ -393,9 +397,10 @@ void merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFram
 
                 //Two points close enough to get fused                
                 if(abs(modelPoint(2) - framePoint(2)) < 0.01){
-                    model->points_[modIdx] = (modelPoint * 0.5 + framePoint * 0.5);
-                    model->colors_[modIdx] = (modelColor * 0.5 + frameColor * 0.5);
                     model->hitCounter_[modIdx]++;
+                    int n = model->hitCounter_[modIdx];
+                    model->points_[modIdx] = (modelPoint * (n-1)/n + framePoint * 1/n);
+                    model->colors_[modIdx] = (modelColor * (n-1)/n + frameColor * 1/n);
                     fused++;
                 }
                 //Far enough to be another point in front of this point

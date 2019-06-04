@@ -8,7 +8,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/rgbd.hpp>
 #include <opencv2/highgui.hpp>
-#include <Open3D/Core/Camera/PinholeCameraIntrinsic.h>
+#include <Open3D/Camera/PinholeCameraIntrinsic.h>
 
 #include "util.h"
 
