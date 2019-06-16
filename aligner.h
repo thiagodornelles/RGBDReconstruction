@@ -96,7 +96,7 @@ public:
         Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, depScales[level], 0.0, cv::BORDER_DEFAULT);
         Scharr(actDepImage, actDepDerivY, CV_64F, 0, 1, depScales[level], 0.0, cv::BORDER_DEFAULT);
 
-        imshow("wDep", normalsWeight);
+//        imshow("wDep", normalsWeight);
 
         //Extrinsecs
         //        double x = bestPoseVector6D(0);
@@ -138,6 +138,7 @@ public:
 
                 int y = r / refDepImage.cols;
                 int x = r % refDepImage.cols;
+
                 if(*refDepImage.ptr<double>(y, x) < minDist)
                     continue;
 
@@ -262,11 +263,15 @@ public:
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
                     double dDep = pixDep2 - pixDep1;
-                    dDep = abs(dDep) > 0.4 ? 0 : dDep;
-                    dDep = pixDep1 == 0 ? 0 : dDep;
-                    dDep = pixDep2 == 0 ? 0 : dDep;
+//                    dDep = pixDep1 == 0 ? 0 : dDep;
+//                    dDep = pixDep2 == 0 ? 0 : dDep;
+                    dDep = abs(dDep) > 0.1 ? 0 : dDep;
                     double wDep = *normalsWeight.ptr<double>(transfR_int, transfC_int);
-                    //                    double wDep = 0;
+                    wInt = wDep;
+                    double maxCurv = 0.5;
+                    double minCurv = 0.2;
+                    wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
+
 
                     jacobians(i,0)   = wDep * jacobianDepth(0,0);
                     jacobians(i,1)   = wDep * jacobianDepth(0,1);
@@ -281,42 +286,41 @@ public:
                     jacobians(i*2,4) = wInt * jacobianIntensity(0,4);
                     jacobians(i*2,5) = wInt * jacobianIntensity(0,5);
 
-                    residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep * depth * 10;
+                    residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep * depth;
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt * color;
 
                     residualImage.at<double>(transfR_int, transfC_int) = wInt * dInt * color;
                     residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = 100 * wDep * dDep * depth;
                 }
-            }
+            }            
         }, nthreads
         );
 
         if (level == 0){
             resize(residualImage, residualImage, Size(residualImage.cols/2, residualImage.rows/2));
-            //            Matrix4d Id = Matrix4d::Identity();
-            //            Mat m1 = transfAndProject(refDepImage, 1, Rt, intrinsecs);
-            //            Mat m2 = transfAndProject(actDepImage, 1, Id, intrinsecs);
-            //            Mat m3;
-            //            m3 = m2 - m1;
-            //            threshold(m3, m3, 0.001, 0, THRESH_TOZERO_INV);
-            //            //            Scalar mean, stddev;
-            //            //            meanStdDev(residualImage, mean, stddev);
-            //            //            cerr << "Mean " << mean[0] << " Stddev " << stddev[0] << endl;
-            //            m3 *= 500;
-            //            imshow("difference", m3);
-            //            waitKey(1);
         }
+//        Matrix4d Id = Matrix4d::Identity();
+//        Mat m1 = transfAndProject(refDepImage, 1, Rt, intrinsecs);
+//        Mat m2 = transfAndProject(actDepImage, 1, Id, intrinsecs);
+//        Mat m3;
+//        m3 = m2 - m1;
+//        threshold(m3, m3, 0.05, 0, THRESH_TOZERO_INV);
+//        //            Scalar mean, stddev;
+//        //            meanStdDev(residualImage, mean, stddev);
+//        //            cerr << "Mean " << mean[0] << " Stddev " << stddev[0] << endl;
+//        m3 *= 200;
+//        imshow("difference", m3);
 
         imshow("Residual", residualImage);
         waitKey(1);
 
-        thisSum = residuals.squaredNorm();
-        if(thisSum < sum){
-            sum = thisSum;
-            cerr << "best pose summation: " << sum << endl;
-            bestPoseVector6D = actualPoseVector6D;
-        }
-        cerr << "Count " << count / (double)(nCols * nRows) << " %" << endl;
+//        thisSum = residuals.squaredNorm();
+//        if(thisSum < sum){
+//            sum = thisSum;
+//            cerr << "best pose summation: " << sum << endl;
+//            bestPoseVector6D = actualPoseVector6D;
+//        }
+//        cerr << "Count " << count / (double)(nCols * nRows) << " %" << endl;
     }
 
     Matrix4d getPoseExponentialMap(VectorXd poseVector6D){
@@ -405,34 +409,44 @@ public:
     bool doSingleIteration(MatrixXd &residuals, MatrixXd &jacobians,
                            double lambda, double threshold){
 
-        double chi = residuals.squaredNorm();
-        cerr << "chi squared " << chi << endl;
-        if(chi > threshold){
-            cerr << "Escalando o erro " << endl;
-            residuals *= sqrt(threshold/chi);
-        }
-        MatrixXd gradients = jacobians.transpose() * residuals;
+//        double chi = residuals.squaredNorm();
+//        cerr << "chi squared " << chi << endl;
+//        if(chi > threshold){
+//            cerr << "Escalando o erro " << endl;
+//            residuals *= sqrt(threshold/chi);
+//        }
+        MatrixXd gradients = jacobians.transpose() * residuals;        
         MatrixXd hessian = jacobians.transpose() * jacobians;
-        actualPoseVector6D -= lambda * hessian.ldlt().solve(gradients);
-        //actualPoseVector6D -= lambda * (hessian.inverse() * gradients);
+        MatrixXd identity;
+        identity.setZero(6,6);
+        identity(0,0) = hessian(0,0);
+        identity(1,1) = hessian(1,1);
+        identity(2,2) = hessian(2,2);
+        identity(3,3) = hessian(3,3);
+        identity(4,4) = hessian(4,4);
+        identity(5,5) = hessian(5,5);
+        hessian += lambda * identity;
+        actualPoseVector6D -= hessian.ldlt().solve(gradients);
+//        actualPoseVector6D -= lambda * (hessian.inverse() * gradients);
         //Gets best transform until now
         double gradientNorm = gradients.norm();
         if(gradientNorm < lastGradientNorm){
             lastGradientNorm = gradientNorm;
             cerr << "best pose by grad: " << lastGradientNorm << endl;
             bestPoseVector6D = actualPoseVector6D;
+            return true;
         }
         return false;
     }
 
-    void getPoseTransform(Mat &refGray, Mat &refDepth, Mat &actGray, Mat &actDepth,
+    VectorXd getPoseTransform(Mat &refGray, Mat &refDepth, Mat &actGray, Mat &actDepth,
                           bool refinement){
 
         //Generate weight based on normal map
         actDepth.convertTo(actDepth, CV_64FC1, 0.0002);
         refDepth.convertTo(refDepth, CV_64FC1, 0.0002);
-        Mat normalsWeight = getMaskOfNormalsFromDepth(actDepth, intrinsecs, 0, false, 1.3);
-        //Mat normalsWeight = getNormalMap(actDepth, false, 1.3);
+        Mat normalsWeight = getNormalMapFromDepth(refDepth, intrinsecs, 0, false);
+
         Mat pyrWNormals[3];
         pyrWNormals[0] = normalsWeight;
         int rows = refGray.rows;
@@ -440,13 +454,13 @@ public:
         resize(normalsWeight, pyrWNormals[1], Size(cols/2, rows/2), 0, 0, INTER_NEAREST);
         resize(normalsWeight, pyrWNormals[2], Size(cols/4, rows/4), 0, 0, INTER_NEAREST);
 
-//        blur(refDepth, refDepth, Size(3, 3));
-//        blur(actDepth, actDepth, Size(3, 3));
         Mat tempRefGray, tempActGray;
         Mat tempRefDepth, tempActDepth;
 
         this->actualPoseVector6D.setZero(6);
-        int iteratLevel[] = { 7, 5, 3 };
+        int iteratLevel[] = { 1, 7, 5 };
+        double lambdas[] = { 0.0002, 0.0002, 0.0002 };
+        double threshold[] = { 80, 160, 160 };
 
         for (int l = 2; l >= 0; l--) {
             cerr << "LEVEL " << l << endl;
@@ -459,21 +473,19 @@ public:
             resize(actGray, tempActGray, Size(cols, rows), 0, 0, INTER_NEAREST);
             resize(actDepth, tempActDepth, Size(cols, rows), 0, 0, INTER_NEAREST);
 
-            //            Mat residualImage;
             this->lastGradientNorm = DBL_MAX;
             this->sum = DBL_MAX;
-            cerr << "Iniciando de:" << endl;
-            cerr << getMatrixRtFromPose6D(actualPoseVector6D);
-            double lambdas[] = { 1, 1, 1 };
-            double threshold[] = { 80, 100, 80 };
+//            cerr << "Iniciando de:" << endl;
+//            cerr << getMatrixRtFromPose6D(actualPoseVector6D);
+            bool minimized = true;
+            int countAdjust = 0;
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
-                                             tempActGray, tempActDepth,
-                                             pyrWNormals[l],
-                                             residuals, jacobians, l);
-                doSingleIteration(residuals, jacobians, lambdas[l], threshold[l]);
+                         tempActGray, tempActDepth,
+                         pyrWNormals[l], residuals, jacobians, l);
+                minimized = doSingleIteration(residuals, jacobians, lambdas[l], threshold[l]);
             }
         }
         if (refinement){
@@ -487,10 +499,11 @@ public:
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
                                              pyrWNormals[0],
-                        residuals, jacobians, 0, true , true);
-                doSingleIteration(residuals, jacobians, 1, 3);
+                        residuals, jacobians, 0, false, true);
+                doSingleIteration(residuals, jacobians, 0.0002, 1);
             }
         }
+        return bestPoseVector6D;
     }
 };
 #endif

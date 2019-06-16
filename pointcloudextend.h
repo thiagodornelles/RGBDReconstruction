@@ -11,7 +11,7 @@ public:
     PointCloudExtended() : PointCloud() {        
     }
     ~PointCloudExtended() override {}
-    void reserveAndAssign(int size){
+    void reserveAndAssign(int size){        
         hitCounter_.reserve(size);
         hitCounter_.assign(size, 0);
         frameCounter_.reserve(size);
@@ -19,6 +19,7 @@ public:
     }
 
 public:
+    vector<float> distance_;
     vector<int> hitCounter_;
-    vector<int> frameCounter_;
+    vector<int> frameCounter_;    
 };
