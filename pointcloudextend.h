@@ -1,5 +1,6 @@
 #include <Open3D/Open3D.h>
 #include <Open3D/Geometry/PointCloud.h>
+#include "visibility.h"
 
 using namespace open3d;
 using namespace geometry;
@@ -16,10 +17,13 @@ public:
         hitCounter_.assign(size, 0);
         frameCounter_.reserve(size);
         frameCounter_.assign(size, 0);
+        directionCounter_.reserve(size);
+        directionCounter_.assign(size, 0);
     }
 
-public:
-    vector<float> distance_;
+public:    
     vector<int> hitCounter_;
-    vector<int> frameCounter_;    
+    vector<int> frameCounter_;
+    vector<uint32_t> directionCounter_;
+    VisibilityDome visibility;
 };

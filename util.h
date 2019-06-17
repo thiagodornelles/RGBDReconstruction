@@ -1,10 +1,9 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include <Open3D.h>
-#include <Geometry/PointCloud.h>
-#include <Geometry/RGBDImage.h>
-#include <Utility/Helper.h>
+#include <Open3D/Geometry/PointCloud.h>
+#include <Open3D/Geometry/RGBDImage.h>
+#include <Open3D/Utility/Helper.h>
 #include <Open3D/IO/ClassIO/ImageIO.h>
 #include <Open3D/Camera/PinholeCameraIntrinsic.h>
 #include <opencv2/core/core.hpp>
@@ -12,6 +11,7 @@
 #include <opencv2/rgbd.hpp>
 #include <opencv2/highgui.hpp>
 #include "pointcloudextend.h"
+#include "visibility.h"
 
 using namespace open3d;
 using namespace open3d::io;
@@ -20,6 +20,8 @@ using namespace open3d::utility;
 using namespace cv;
 using namespace std;
 using namespace rgbd;
+
+VisibilityDome dome;
 
 const int confThresh = 3;
 
@@ -167,7 +169,7 @@ Mat getNormalMapFromPointCloud(shared_ptr<PointCloud> pointCloud, PinholeCameraI
         camAxis = normalize(camAxis);
         double uv = isnan(pixel[0]) ? 0 : pixel.dot(camAxis);
         uv = cos(acos(uv) * angleThres);
-        filtered.at<double>(pos[0], pos[1]) = uv < 0.3 ? 0 : uv;
+        filtered.at<double>(pos[0], pos[1]) = uv < 0.0 ? 0 : uv;
     }
     );
 
@@ -175,9 +177,7 @@ Mat getNormalMapFromPointCloud(shared_ptr<PointCloud> pointCloud, PinholeCameraI
 }
 
 // Level comes in reverse order 2 > 1 > 0
-Mat getNormalMapFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsics, int level,
-                          bool dilateBorders = false, double angleThres = 1.222,
-                          double angleCut = 0){
+Mat getNormalMapFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsics, int level){
 
     double scaleFactor = 1.0 / pow(2, level);
     double nearbNormals[] = { 7, 7, 3};
@@ -192,35 +192,49 @@ Mat getNormalMapFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsics, int lev
                                          CV_64F, K, nearbNormals[level],
                                          RgbdNormals::RGBD_NORMALS_METHOD_FALS);
     Mat tempDepth, normals;
-    Mat refPoints3d;
+    Mat refPoints3d;    
     depth.convertTo(tempDepth, CV_16UC1, 5000);
     depthTo3d(tempDepth, K, refPoints3d);
     normalComp(refPoints3d, normals);
 
-    Mat filtered = Mat::zeros(normals.rows, normals.cols, CV_64FC1);
-    double fovX = 2 * atan(640 / (2 * intrinsics.GetFocalLength().first)) * 180.0 / CV_PI;
-    double fovY = 2 * atan(480 / (2 * intrinsics.GetFocalLength().second)) * 180.0 / CV_PI;
+    return normals;
+}
+
+Mat getNormalWeight(Mat normalMap, Mat depth, PinholeCameraIntrinsic intrinsics,
+                    bool dilateBorders = false, double angleThres = 1.222,
+                    double angleCut = 0){
+
+    Mat filtered = Mat::zeros(normalMap.rows, normalMap.cols, CV_64FC1);
+    double fx = intrinsics.GetFocalLength().first;
+    double fy = intrinsics.GetFocalLength().second;
+    double width = intrinsics.width_;
+    double height = intrinsics.height_;
+    double fovX = 2 * atan(width / (2 * fx)) * 180.0 / CV_PI;
+    double fovY = 2 * atan(height / (2 * fy)) * 180.0 / CV_PI;
     float aspectRatio = depth.cols / (float)depth.rows; // assuming width > height
 
-    normals.forEach<Vec3d>(
-                [&](Vec3d &pixel, const int *pos) -> void
-    {        
-        float Px = (2 * ((pos[1] + 0.5) / depth.cols) - 1) * tan(fovX / 2 * M_PI / 180) * aspectRatio;
-        float Py = (1 - 2 * ((pos[0] + 0.5) / depth.rows)) * tan(fovY / 2 * M_PI / 180);
-        Vec3d camAxis(Px, Py, -1);
-        camAxis = normalize(camAxis);
-        double uv = isnan(pixel[0]) ? 0 : pixel.dot(camAxis);
-        uv = cos(acos(uv) * angleThres);
-        filtered.at<double>(pos[0], pos[1]) = uv < angleCut ? 0 : uv;
+    normalMap.forEach<Vec3d>([&](Vec3d &pixel, const int *pos) -> void
+    {
+        if(depth.at<double>(pos[0], pos[1]) > 0 ){
+            float Px = (2 * ((pos[1] + 0.5) / depth.cols) - 1) *
+                    tan(fovX / 2 * M_PI / 180) * aspectRatio;
+            float Py = (1 - 2 * ((pos[0] + 0.5) / depth.rows)) *
+                    tan(fovY / 2 * M_PI / 180);
+            Vec3d camAxis(Px, Py, -1);
+            camAxis = normalize(camAxis);
+            double uv = isnan(pixel[0]) ? 0 : pixel.dot(camAxis);
+            uv = cos(acos(uv) * angleThres);
+            filtered.at<double>(pos[0], pos[1]) = uv < angleCut ? 0 : uv;
+        }
     }
     );
 
     if (dilateBorders){
         erode(filtered, filtered, getStructuringElement(MORPH_CROSS, Size(3, 3)));
     }
+
     return filtered;
 }
-
 
 void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
                        Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics,
@@ -399,7 +413,7 @@ void removeUnstablePoints(shared_ptr<PointCloudExtended> model){
 
 double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFrame,
            Eigen::Matrix4d transf, PinholeCameraIntrinsic intrinsics,
-           Mat normalMap = Mat()){
+           Mat normalMap, Mat normalWeight = Mat()){
 
     //At first model comes empty then will be fullfilled with first frame's points
     if(model->IsEmpty()){
@@ -440,8 +454,8 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
             int lastIdx = *lastFrameIdx.ptr<int>(r, c);
 
             double normal = 1;
-            if(normalMap.rows != 0)
-                normal = *normalMap.ptr<double>(r, c);
+            if(normalWeight.rows != 0)
+                normal = *normalWeight.ptr<double>(r, c);
 
             if(normal <= 0)
                 continue;
@@ -456,7 +470,31 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
                 //Two points close enough to get fused
                 double diff = abs(modelPoint(2) - framePoint(2));
                 if(diff < 0.01){
-                    model->hitCounter_[modIdx]++;
+                    //Inserting direction which the point has been seen
+                    //DIRECTION INSERT
+                    Eigen::Vector4f normalVec;
+                    double* pixelPtr = (double*)normalMap.data;
+                    normalVec(0) = pixelPtr[r*normalMap.cols*3 + c*3 + 0];
+                    normalVec(1) = pixelPtr[r*normalMap.cols*3 + c*3 + 1];
+                    normalVec(2) = pixelPtr[r*normalMap.cols*3 + c*3 + 2];
+                    normalVec(3) = 1;
+
+                    double fovX = 2 * atan(640 / (2 * intrinsics.GetFocalLength().first))
+                            * 180.0 / CV_PI;
+                    double fovY = 2 * atan(480 / (2 * intrinsics.GetFocalLength().second))
+                            * 180.0 / CV_PI;
+                    float aspectRatio = intrinsics.width_ / (float)intrinsics.height_;
+
+                    float Px = (2 * ((r + 0.5) / modelIdx.cols) - 1) *
+                            tan(fovX / 2 * M_PI / 180) * aspectRatio;
+                    float Py = (1 - 2 * ((c + 0.5) / modelIdx.rows)) *
+                            tan(fovY / 2 * M_PI / 180);
+                    Eigen::Vector4f camAxis(Px, Py, -1, 1);
+
+                    dome.addDirection(normalVec, camAxis, model->directionCounter_[modIdx]);
+                    //DIRECTION INSERT
+
+                    model->hitCounter_[modIdx]++;                    
                     int n = model->hitCounter_[modIdx];
                     n = n > 10 ? 10 : n;
                     model->points_[modIdx] = (modelPoint * (n-normal)/n + framePoint * normal/n);

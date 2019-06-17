@@ -445,7 +445,8 @@ public:
         //Generate weight based on normal map
         actDepth.convertTo(actDepth, CV_64FC1, 0.0002);
         refDepth.convertTo(refDepth, CV_64FC1, 0.0002);
-        Mat normalsWeight = getNormalMapFromDepth(refDepth, intrinsecs, 0, false);
+        Mat normalMap = getNormalMapFromDepth(refDepth, intrinsecs, 0);
+        Mat normalsWeight = getNormalWeight(normalMap, refDepth, intrinsecs);
 
         Mat pyrWNormals[3];
         pyrWNormals[0] = normalsWeight;
@@ -458,7 +459,7 @@ public:
         Mat tempRefDepth, tempActDepth;
 
         this->actualPoseVector6D.setZero(6);
-        int iteratLevel[] = { 1, 7, 5 };
+        int iteratLevel[] = { 3, 7, 5 };
         double lambdas[] = { 0.0002, 0.0002, 0.0002 };
         double threshold[] = { 80, 160, 160 };
 
