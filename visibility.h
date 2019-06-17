@@ -55,9 +55,9 @@ public:
         return vertices_;
     }
 
-    void addDirection (const Eigen::Vector4f& normal,
-                       const Eigen::Vector4f& direction,
-                       uint32_t&              directions)
+    void addDirection (const Eigen::Vector4f &normal,
+                       const Eigen::Vector4f &direction,
+                       uint32_t &directions)
     {
         // Find the rotation that aligns the normal with [0; 0; 1]
         const float dot = normal.z ();

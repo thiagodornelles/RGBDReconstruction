@@ -22,8 +22,8 @@ public:
     }
 
 public:    
+    vector<uint32_t> directionCounter_;
     vector<int> hitCounter_;
     vector<int> frameCounter_;
-    vector<uint32_t> directionCounter_;
     VisibilityDome visibility;
 };

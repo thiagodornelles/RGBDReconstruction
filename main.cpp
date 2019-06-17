@@ -58,9 +58,9 @@ int main(int argc, char *argv[]){
     double maxDistProjection = 0.3;
 
 //    string datasetFolder = "/media/thiago/BigStorage/gabrielaGAP/";
-//    string datasetFolder = "/media/thiago/BigStorage/gabrielaFar/";
-//    string datasetFolder = "/Users/thiago/Datasets/gabrielaXYZ/";
-    string datasetFolder = "/Users/thiago/Datasets/kinectdata/";
+//    string datasetFolder = "/Users/thiago/Datasets/gabrielaFar/";
+    string datasetFolder = "/Users/thiago/Datasets/gabrielaXYZ/";
+//    string datasetFolder = "/Users/thiago/Datasets/kinectdata/";
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/rgbd_dataset_freiburg1_plant/";
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";

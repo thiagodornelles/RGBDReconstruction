@@ -180,7 +180,7 @@ Mat getNormalMapFromPointCloud(shared_ptr<PointCloud> pointCloud, PinholeCameraI
 Mat getNormalMapFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsics, int level){
 
     double scaleFactor = 1.0 / pow(2, level);
-    double nearbNormals[] = { 7, 7, 3};
+    double nearbNormals[] = { 3, 3, 3};
 
     Mat K = (Mat_<double>(3, 3) << intrinsics.GetFocalLength().first * scaleFactor,
              0, intrinsics.GetPrincipalPoint().first * scaleFactor,
@@ -405,6 +405,7 @@ void removeUnstablePoints(shared_ptr<PointCloudExtended> model){
             model->colors_.erase(model->colors_.begin() + i);
             model->frameCounter_.erase(model->frameCounter_.begin() + i);
             model->hitCounter_.erase(model->hitCounter_.begin() + i);
+            model->directionCounter_.erase(model->directionCounter_.begin() + i);
             removed++;
         }
     }
@@ -434,6 +435,7 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
             model->colors_.erase(model->colors_.begin() + i);
             model->frameCounter_.erase(model->frameCounter_.begin() + i);
             model->hitCounter_.erase(model->hitCounter_.begin() + i);
+            model->directionCounter_.erase(model->directionCounter_.begin() + i);
             removed++;
         }
     }
@@ -462,6 +464,14 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
 
             //Two points are into a line of sight from camera
             if(lastIdx >= 0 && modIdx >= 0){
+
+                //Becomes stable point
+                cerr << dome.countDirections(model->directionCounter_[modIdx]) << endl;
+                if(dome.countDirections(model->directionCounter_[modIdx]) > 4){
+                    model->colors_[modIdx] = Eigen::Vector3d(1,0,0);
+                    continue;
+                };
+
                 Eigen::Vector3d modelPoint = model->points_[modIdx];
                 Eigen::Vector3d modelColor = model->colors_[modIdx];
                 Eigen::Vector3d framePoint = lastFrame->points_[lastIdx];
@@ -497,8 +507,8 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
                     model->hitCounter_[modIdx]++;                    
                     int n = model->hitCounter_[modIdx];
                     n = n > 10 ? 10 : n;
-                    model->points_[modIdx] = (modelPoint * (n-normal)/n + framePoint * normal/n);
-                    model->colors_[modIdx] = (modelColor * (n-normal)/n + frameColor * normal/n);                    
+                    model->points_[modIdx] = (modelPoint * (n-1)/n + framePoint * 1/n);
+                    model->colors_[modIdx] = (modelColor * (n-1)/n + frameColor * 1/n);
                     fused++;
                 }
                 //Far enough to be another point in front of this point
@@ -509,6 +519,7 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
                     model->colors_.push_back(frameColor);
                     model->hitCounter_.push_back(0);
                     model->frameCounter_.push_back(0);
+                    model->directionCounter_.push_back(0);
                     addNew++;
                 }
             }
@@ -520,6 +531,7 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
                 model->colors_.push_back(frameColor);
                 model->hitCounter_.push_back(0);
                 model->frameCounter_.push_back(0);
+                model->directionCounter_.push_back(0);
                 addInFrontOf++;
             }
         }
