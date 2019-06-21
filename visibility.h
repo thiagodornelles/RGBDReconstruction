@@ -55,6 +55,18 @@ public:
         return vertices_;
     }
 
+    void insertDirection (double valueNormal,
+                       uint32_t &directions){
+
+        double a = 0.9;
+        double step = 0.003225;
+        for (int i = 0; i < 31; ++i) {
+            if(valueNormal > a && valueNormal < a + step)
+                directions |= (1 << i);
+            a += step;
+        }
+    }
+
     void addDirection (const Eigen::Vector4f &normal,
                        const Eigen::Vector4f &direction,
                        uint32_t &directions)

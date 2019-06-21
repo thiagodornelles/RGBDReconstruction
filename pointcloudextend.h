@@ -17,12 +17,12 @@ public:
         hitCounter_.assign(size, 0);
         frameCounter_.reserve(size);
         frameCounter_.assign(size, 0);
-        directionCounter_.reserve(size);
-        directionCounter_.assign(size, 0);
+        angle_.reserve(size);
+        angle_.assign(size, 0);
     }
 
 public:    
-    vector<uint32_t> directionCounter_;
+    vector<double> angle_;
     vector<int> hitCounter_;
     vector<int> frameCounter_;
     VisibilityDome visibility;

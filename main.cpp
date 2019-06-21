@@ -28,13 +28,14 @@ using namespace cv;
 using namespace std::chrono;
 
 bool generateMesh = false;
+double totalAngle = 0;
+double voxelDSAngle = 0;
 
 int main(int argc, char *argv[]){
 
     cerr << CV_VERSION << endl;
 
     //    SetVerbosityLevel(VerbosityLevel::VerboseAlways);
-    ScalableTSDFVolume tsdf(0.0002, 0.001, TSDFVolumeColorType::RGB8);
     Eigen::Matrix4d transf = Eigen::Matrix4d::Identity();
     transf <<  1,  0,  0,  0,
             0, -1,  0,  0,
@@ -53,13 +54,17 @@ int main(int argc, char *argv[]){
     //Kinect v2
     //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(512, 424, 363.491, 363.491, 256.496, 207.778);
 
+    double depthScale = 4500.0;
+    double maxDistProjection = 0.3;
     Aligner aligner(intrinsics);
     aligner.setDist(0.1, 0.3);
-    double maxDistProjection = 0.3;
+    aligner.depthScale = depthScale;
+
+    ScalableTSDFVolume tsdf(1.f/depthScale, 0.001, TSDFVolumeColorType::RGB8);
 
 //    string datasetFolder = "/media/thiago/BigStorage/gabrielaGAP/";
-//    string datasetFolder = "/Users/thiago/Datasets/gabrielaFar/";
-    string datasetFolder = "/Users/thiago/Datasets/gabrielaXYZ/";
+    string datasetFolder = "/media/thiago/BigStorage/gabrielaFar/";
+//    string datasetFolder = "/media/thiago/BigStorage/gabrielaGAP/";
 //    string datasetFolder = "/Users/thiago/Datasets/kinectdata/";
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/rgbd_dataset_freiburg1_plant/";
     //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
@@ -72,9 +77,9 @@ int main(int argc, char *argv[]){
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
     int initFrame = 0;
-    int finalFrame = 250;
+    int finalFrame = 1000;
 
-    shared_ptr<PointCloudExtended> pointCloud = std::make_shared<PointCloudExtended>();
+    shared_ptr<PointCloudExtended> pcdExtended = std::make_shared<PointCloudExtended>();
     shared_ptr<PointCloud> pcdVisualizer = std::make_shared<PointCloud>();
     shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
 
@@ -83,20 +88,20 @@ int main(int argc, char *argv[]){
     lastPose.setZero(6);
     for (int i = initFrame; i < depthFiles.size()-1; i+=step) {
 
-        Visualizer vis;
-        vis.CreateVisualizerWindow("Visualization", 640, 480);
-        vis.GetRenderOption().point_size_ = 1;
-        vis.GetViewControl().SetViewMatrices(initCam);
+//        Visualizer vis;
+//        vis.CreateVisualizerWindow("Visualization", 640, 480);
+//        vis.GetRenderOption().point_size_ = 1;
+//        vis.GetViewControl().SetViewMatrices(initCam);
 
-        if (generateMesh){
-            vis.AddGeometry({mesh});
-        }
-        else{
-            vis.AddGeometry({pcdVisualizer});
-        }
-        vis.UpdateGeometry();
-        vis.UpdateRender();
-        vis.PollEvents();
+//        if (generateMesh){
+//            vis.AddGeometry({mesh});
+//        }
+//        else{
+//            vis.AddGeometry({pcdVisualizer});
+//        }
+//        vis.UpdateGeometry();
+//        vis.UpdateRender();
+//        vis.PollEvents();
 
         int i1 = i;
         int i2 = i1 + step;
@@ -116,14 +121,14 @@ int main(int argc, char *argv[]){
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
 
             if (!generateMesh){
-                projectPointCloudExtended(*pointCloud, maxDistProjection, transf.inverse(),
-                                  intrinsics, depth2, index2);
+                projectPointCloudExtended(*pcdExtended, maxDistProjection, transf.inverse(),
+                                          intrinsics, depthScale, initFrame, i1, depth2, index2);
             }
             else{
-                projectPointCloud(*tsdf.ExtractPointCloud(), maxDistProjection,
+                projectPointCloud(*tsdf.ExtractPointCloud(), maxDistProjection, depthScale,
                                   transf.inverse(), intrinsics, depth2, index2);
             }
-            imshow("projection", depth2 * 10);
+//            imshow("projection", depth2 * 10);
         }
         Mat gray1;
         Mat gray2;
@@ -131,7 +136,7 @@ int main(int argc, char *argv[]){
         cvtColor(rgb2, gray2, CV_BGR2GRAY);
 
 //        threshold(depth1, depth1, 1000, 65535, THRESH_TOZERO_INV);
-//        erode(depth1, depth1, getStructuringElement(MORPH_CROSS, Size(5, 5)));
+//        erode(depth1, depth1, getStructuringElement(MORPH_CROSS, Size(3, 3)));
 //        erode(depth2, depth2, getStructuringElement(MORPH_CROSS, Size(5, 5)));
 
         Mat grayOut, depthOut;
@@ -145,28 +150,50 @@ int main(int argc, char *argv[]){
         //Visualization
         shared_ptr<RGBDImage> rgbdImage;
         Mat depthTmp;
-        depth1.convertTo(depthTmp, CV_64FC1, 0.0002);
-        Mat normalMap1 = getNormalMapFromDepth(depthTmp, intrinsics, 0);
+        depth1.convertTo(depthTmp, CV_64FC1, 1.f/depthScale);
+        Mat normalMap1 = getNormalMapFromDepth(depthTmp, intrinsics, 0, depthScale);
         Mat maskNormals = getNormalWeight(normalMap1, depthTmp, intrinsics, false, 1.3);
         imshow("normals", maskNormals);
         rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
-                                  intrinsics, maxDistProjection, &maskNormals);
+                                  intrinsics, maxDistProjection, depthScale, &maskNormals);
 //        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
-//                                  intrinsics, maxDistProjection);
+//                                  intrinsics, maxDistProjection, depthScale);
 
         Mat depthTmp2;
-        depth2.convertTo(depthTmp2, CV_64FC1, 0.0002);
-        Mat normalMap2 = getNormalMapFromDepth(depthTmp2, intrinsics, 0);
+        depth2.convertTo(depthTmp2, CV_64FC1, 1.0/depthScale);
+        Mat normalMap2 = getNormalMapFromDepth(depthTmp2, intrinsics, 0, depthScale);
         Mat model = getNormalWeight(normalMap2, depthTmp2, intrinsics);
         imshow("model", model);
         shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, intrinsics, initCam);
 
+        Matrix3d prevRotation;
+        prevRotation << transf(0,0) , transf(0,1), transf(0,2),
+                transf(1,0) , transf(1,1), transf(1,2),
+                transf(2,0) , transf(2,1), transf(2,2);
+
+        Matrix4d prevTransf;
+        prevTransf = transf;
+
         transf = transf * aligner.getMatrixRtFromPose6D(aligner.getPose6D()).inverse();
+
+        Matrix3d rotation;
+        rotation << transf(0,0) , transf(0,1), transf(0,2),
+                transf(1,0) , transf(1,1), transf(1,2),
+                transf(2,0) , transf(2,1), transf(2,2);
+
+        cerr << rotation << endl;
+        double angle = acos(((prevRotation.transpose() * rotation).trace()-1)/2);
+        angle = isnan(angle) ? 0 : angle;
+        angle *= 180/M_PI;
+
+        totalAngle += angle;
+        voxelDSAngle += angle;
 
         if (!generateMesh){
             pcd->Transform(transf);
             auto start = high_resolution_clock::now();
-            merge(pointCloud, pcd, transf.inverse(), intrinsics, normalMap1, maskNormals);
+            merge(pcdExtended, pcd, transf.inverse(), intrinsics, depthScale,
+                  totalAngle, normalMap1, maskNormals);
             auto stop = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(stop - start);
             cerr << "Merge time: " << duration.count()/1000000.f << endl;            
@@ -188,26 +215,29 @@ int main(int argc, char *argv[]){
         cerr << "Time elapsed: " << duration.count()/1000000.f << endl;
         cerr << "Frame : " << i << endl;
 
+        cerr << "ANGULO: " << totalAngle << endl;
+//        if(voxelDSAngle > 20){
+//            pcdExtended = VoxelDownSampleExt(pcdExtended, 1.f/depthScale, totalAngle, i, 0);
+//            voxelDSAngle = 0;
+//        }
+
         char key = waitKey(100);
         if(key == '1') imwrite("teste.png", depthOut);
         if(i == finalFrame || key == 'z'){
-            removeUnstablePoints(pointCloud);
-            pcdVisualizer = std::get<0>(geometry::RemoveStatisticalOutliers(*pointCloud, 10, 0.5));
-            vis.AddGeometry({pcdVisualizer});
+            removeUnstablePoints(pcdExtended);
+//            pcdVisualizer = std::get<0>(geometry::RemoveStatisticalOutliers(*pointCloud, 10, 0.001));
+
+            Visualizer vis;
+            vis.CreateVisualizerWindow("Visualization", 800, 600);
+            vis.GetRenderOption().point_size_ = 2;
+            vis.GetViewControl().SetViewMatrices(initCam);
+            vis.AddGeometry({pcdExtended});
             vis.Run();
             vis.UpdateGeometry();
             vis.UpdateRender();
             vis.PollEvents();
+            vis.Close();
             vis.DestroyVisualizerWindow();
-            break;
-
-            do {
-                key = waitKey(100);
-                if(key == 'o')
-                    break;
-                vis.UpdateGeometry();
-            }
-            while(key == 's');
         }
         if(key == 27){
             break;
@@ -216,6 +246,6 @@ int main(int argc, char *argv[]){
     if (generateMesh)
         WriteTriangleMeshToPLY("result.ply", *mesh);
     else
-        WritePointCloudToPLY("result.ply", *pointCloud);
+        WritePointCloudToPLY("result.ply", *pcdExtended);
     return 0;
 }

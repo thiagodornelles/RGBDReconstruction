@@ -44,6 +44,7 @@ public:
     double sum = DBL_MAX;
     double minDist = 0.1;
     double maxDist = 3.0;
+    double depthScale = 5000.0;
 
     Aligner(PinholeCameraIntrinsic intrinsecs){
         actualPoseVector6D.setZero(6);
@@ -265,13 +266,12 @@ public:
                     double dDep = pixDep2 - pixDep1;
 //                    dDep = pixDep1 == 0 ? 0 : dDep;
 //                    dDep = pixDep2 == 0 ? 0 : dDep;
-                    dDep = abs(dDep) > 0.1 ? 0 : dDep;
-                    double wDep = *normalsWeight.ptr<double>(transfR_int, transfC_int);
+                    dDep = abs(dDep) > 0.01 ? 0 : dDep;
+                    double wDep = abs(*normalsWeight.ptr<double>(transfR_int, transfC_int));
                     wInt = wDep;
                     double maxCurv = 0.5;
                     double minCurv = 0.2;
                     wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
-
 
                     jacobians(i,0)   = wDep * jacobianDepth(0,0);
                     jacobians(i,1)   = wDep * jacobianDepth(0,1);
@@ -289,8 +289,8 @@ public:
                     residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep * depth;
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt * color;
 
-                    residualImage.at<double>(transfR_int, transfC_int) = wInt * dInt * color;
-                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = 100 * wDep * dDep * depth;
+                    residualImage.at<double>(transfR_int, transfC_int) = dInt * color;
+                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = 100 * dDep * depth;
                 }
             }            
         }, nthreads
@@ -432,7 +432,7 @@ public:
         double gradientNorm = gradients.norm();
         if(gradientNorm < lastGradientNorm){
             lastGradientNorm = gradientNorm;
-            cerr << "best pose by grad: " << lastGradientNorm << endl;
+//            cerr << "best pose by grad: " << lastGradientNorm << endl;
             bestPoseVector6D = actualPoseVector6D;
             return true;
         }
@@ -443,9 +443,9 @@ public:
                           bool refinement){
 
         //Generate weight based on normal map
-        actDepth.convertTo(actDepth, CV_64FC1, 0.0002);
-        refDepth.convertTo(refDepth, CV_64FC1, 0.0002);
-        Mat normalMap = getNormalMapFromDepth(refDepth, intrinsecs, 0);
+        actDepth.convertTo(actDepth, CV_64FC1, 1.f/depthScale);
+        refDepth.convertTo(refDepth, CV_64FC1, 1.f/depthScale);
+        Mat normalMap = getNormalMapFromDepth(refDepth, intrinsecs, 0, depthScale);
         Mat normalsWeight = getNormalWeight(normalMap, refDepth, intrinsecs);
 
         Mat pyrWNormals[3];
@@ -459,12 +459,12 @@ public:
         Mat tempRefDepth, tempActDepth;
 
         this->actualPoseVector6D.setZero(6);
-        int iteratLevel[] = { 3, 7, 5 };
+        int iteratLevel[] = { 7, 5, 5 };
         double lambdas[] = { 0.0002, 0.0002, 0.0002 };
         double threshold[] = { 80, 160, 160 };
 
         for (int l = 2; l >= 0; l--) {
-            cerr << "LEVEL " << l << endl;
+//            cerr << "LEVEL " << l << endl;
             int level = pow(2, l);
             int rows = refGray.rows/level;
             int cols = refGray.cols/level;
@@ -496,12 +496,12 @@ public:
 
             for (int i = 0; i < 5; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
-                MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
+                MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);                
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
                                              pyrWNormals[0],
-                        residuals, jacobians, 0, false, true);
-                doSingleIteration(residuals, jacobians, 0.0002, 1);
+                        residuals, jacobians, 0, true, true);
+                doSingleIteration(residuals, jacobians, lambdas[0], 1);
             }
         }
         return bestPoseVector6D;
