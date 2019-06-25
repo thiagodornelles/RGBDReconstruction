@@ -21,10 +21,42 @@ using namespace cv;
 using namespace std;
 using namespace rgbd;
 
-const int confThresh = 3;
+const int confThresh = 0;
+
+Image CreateDepthImageFromMat(Mat *matImage)
+{
+    Image open3dImage;
+    open3dImage.PrepareImage(matImage->cols, matImage->rows, 1, sizeof(uint16_t));
+    uint8_t *data = open3dImage.data_.data();
+    matImage->forEach<ushort>(
+                [&data, &matImage](ushort &pixel, const int *position) -> void
+    {
+        uint8_t *pData = &(data[(position[0] * matImage->cols + position[1])*2]);
+        *pData++ = pixel & 0xff;
+        *pData = pixel >> 8;
+    });
+    return open3dImage;
+}
+
+
+Image CreateRGBImageFromMat(Mat *matImage)
+{
+    Image open3dImage;
+    open3dImage.PrepareImage(matImage->cols, matImage->rows, matImage->channels(), sizeof(uint8_t));
+    uint8_t *data = open3dImage.data_.data();
+    matImage->forEach<Vec3b>(
+                [&data, &matImage](Vec3b &pixel, const int *position) -> void
+    {
+        uint8_t *pData = &(data[(position[0] * matImage->cols + position[1]) * 3]);
+        *pData++ = pixel(2);
+        *pData++ = pixel(1);
+        *pData = pixel(0);
+    });
+    return open3dImage;
+}
 
 shared_ptr<RGBDImage> ReadRGBDImage(
-        const char* colorFilename, const char* depthFilename,        
+        const char* colorFilename, const char* depthFilename,
         const PinholeCameraIntrinsic &intrinsic, double depthTrunc,
         double depthScale, Mat *depthMask = NULL)
 {    
@@ -54,7 +86,7 @@ shared_ptr<RGBDImage> ReadRGBDImage(
             }
         }
         );
-    }    
+    }
     std::shared_ptr<RGBDImage> rgbd_image =
             CreateRGBDImageFromColorAndDepth(color, depth, depthScale, depthTrunc,
                                              convertRgbToIntensity);
@@ -192,7 +224,7 @@ Mat getNormalMapFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsics, int lev
                                          CV_64F, K, nearbNormals[level],
                                          RgbdNormals::RGBD_NORMALS_METHOD_FALS);
     Mat tempDepth, normals;
-    Mat refPoints3d;    
+    Mat refPoints3d;
     depth.convertTo(tempDepth, CV_16UC1, depthScale);
     depthTo3d(tempDepth, K, refPoints3d);
     normalComp(refPoints3d, normals);
@@ -215,7 +247,7 @@ Mat getNormalWeight(Mat normalMap, Mat depth, PinholeCameraIntrinsic intrinsics,
 
     normalMap.forEach<Vec3d>([&](Vec3d &pixel, const int *pos) -> void
     {
-        if(depth.at<double>(pos[0], pos[1]) > 0 ){
+        if(depth.at<float>(pos[0], pos[1]) > 0 ){
 //            float Px = (2 * ((pos[1] + 0.5) / depth.cols) - 1) *
 //                    tan(fovX / 2 * M_PI / 180) * aspectRatio;
 //            float Py = (1 - 2 * ((pos[0] + 0.5) / depth.rows)) *
@@ -289,7 +321,8 @@ void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
 //                double dist = refPoint3d(2);
 //                double coeff[4] = {3.11024, -4.86352, 1.34031, 0.91401};
 //                double radius = coeff[3] + coeff[2]*dist + coeff[1]*pow(dist,2) + coeff[0]*pow(dist,3);
-//                double radius = dist < 0.2 ? 0.75 : 0.5;
+//                double radius = dist < 0.2 ? 1 : 2;
+//                double radius = 2;
 //                circle(indexMap, Point(transfC_int, transfR_int), radius, i, -1);
 //                circle(depthMap, Point(transfC_int, transfR_int), radius, value, -1);
             }
@@ -423,7 +456,7 @@ shared_ptr<PointCloudExtended> VoxelDownSampleExt(shared_ptr<PointCloudExtended>
     pcd = VoxelDownSample(*input, voxel_size);
 //    pointCloud->points_ = pcd->points_;
 //    pointCloud->colors_ = pcd->colors_;
-//    pointCloud->normals_ = pcd->normals_;    
+//    pointCloud->normals_ = pcd->normals_;
     pointCloud->reserveAndAssign(pcd->points_.size());
     for (int i = 0; i < pcd->points_.size(); ++i) {
         pointCloud->points_.push_back(pcd->points_[i]);
@@ -479,6 +512,10 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
     for (int r = 0; r < modelIdx.rows; ++r) {
         for (int c = 0; c < modelIdx.cols; ++c) {
             int modIdx = *modelIdx.ptr<int>(r, c);
+//            int umodIdx = *modelIdx.ptr<int>(r-1, c-1);
+//            int dmodIdx = *modelIdx.ptr<int>(r+1, c+1);
+//            int lmodIdx = *modelIdx.ptr<int>(r-1, c+1);
+//            int rmodIdx = *modelIdx.ptr<int>(r+1, c-1);
             int lastIdx = *lastFrameIdx.ptr<int>(r, c);
 
             double normal = 1;
@@ -488,22 +525,20 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
             if(normal <= 0)
                 continue;
 
-            int n = 0;
-
             //Two points are into a line of sight from camera
             if(lastIdx >= 0 && modIdx >= 0){
 
                 Eigen::Vector3d modelPoint = model->points_[modIdx];
                 Eigen::Vector3d modelColor = model->colors_[modIdx];
                 Eigen::Vector3d framePoint = lastFrame->points_[lastIdx];
-                Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];                
+                Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
                 //Two points close enough to get fused
                 double diff = abs(modelPoint(2) - framePoint(2));
-                double angDiff = abs(model->angle_[modIdx] - angle);
+//                double angDiff = abs(model->angle_[modIdx] - angle);
 //                cerr << angDiff << endl;
-                if(diff < 0.01){
+                if(diff < 0.005){
                     model->hitCounter_[modIdx]++;
-                    n = model->hitCounter_[modIdx];// > 10 ? 10 : model->hitCounter_[modIdx];
+                    int n = model->hitCounter_[modIdx];// > 10 ? 10 : model->hitCounter_[modIdx];
                     model->points_[modIdx] = (modelPoint * (n-normal)/n + framePoint * normal/n);
                     model->colors_[modIdx] = (modelColor * (n-1)/n + frameColor * 1/n);
                     fused++;
@@ -536,7 +571,7 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
     cerr << "Fused points: " << fused << endl;
     cerr << "New points: " << addNew << endl;
     cerr << "New points in front of " << addInFrontOf << endl;
-    waitKey(100);
+//    waitKey(100);
 //    cerr << "Total points " << model->points_.size() << endl;
     return (addInFrontOf + 1.0)/(model->points_.size()+1.0);
 }

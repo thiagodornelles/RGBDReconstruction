@@ -267,7 +267,7 @@ public:
 //                    dDep = pixDep1 == 0 ? 0 : dDep;
 //                    dDep = pixDep2 == 0 ? 0 : dDep;
                     dDep = abs(dDep) > 0.01 ? 0 : dDep;
-                    double wDep = abs(*normalsWeight.ptr<double>(transfR_int, transfC_int));
+                    double wDep = *normalsWeight.ptr<double>(transfR_int, transfC_int);
                     wInt = wDep;
                     double maxCurv = 0.5;
                     double minCurv = 0.2;
@@ -286,7 +286,7 @@ public:
                     jacobians(i*2,4) = wInt * jacobianIntensity(0,4);
                     jacobians(i*2,5) = wInt * jacobianIntensity(0,5);
 
-                    residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep * depth;
+                    residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep * depth * 10;
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt * color;
 
                     residualImage.at<double>(transfR_int, transfC_int) = dInt * color;

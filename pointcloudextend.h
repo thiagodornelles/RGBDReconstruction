@@ -18,7 +18,7 @@ public:
         frameCounter_.reserve(size);
         frameCounter_.assign(size, 0);
         angle_.reserve(size);
-        angle_.assign(size, 0);
+        angle_.assign(size, 0);        
     }
 
 public:    
