@@ -29,13 +29,16 @@ using namespace std::chrono;
 
 bool generateMesh = false;
 double totalAngle = 0;
+double totalTransl = 0;
 double voxelDSAngle = 0;
+double radius = 1;
 
 int main(int argc, char *argv[]){
 
     cerr << CV_VERSION << endl;
 
     //    SetVerbosityLevel(VerbosityLevel::VerboseAlways);
+    Eigen::Matrix4d t = Eigen::Matrix4d::Identity();
     Eigen::Matrix4d transf = Eigen::Matrix4d::Identity();
     transf <<  1,  0,  0,  0,
             0, -1,  0,  0,
@@ -54,7 +57,7 @@ int main(int argc, char *argv[]){
     //Kinect v2
     //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(512, 424, 363.491, 363.491, 256.496, 207.778);
 
-    double depthScale = 4500.0;
+    double depthScale = 5000.0;
     double maxDistProjection = 0.3;
     Aligner aligner(intrinsics);
     aligner.setDist(0.1, 0.3);
@@ -62,46 +65,23 @@ int main(int argc, char *argv[]){
 
     ScalableTSDFVolume tsdf(1.f/depthScale, 0.001, TSDFVolumeColorType::RGB8);
 
-//    string datasetFolder = "/media/thiago/BigStorage/gabrielaGAP/";
     string datasetFolder = "/Users/thiago/Datasets/gabrielaGAP/";
-//    string datasetFolder = "/media/thiago/BigStorage/gabrielaGAP/";
-//    string datasetFolder = "/Users/thiago/Datasets/kinectdata/";
-    //    string datasetFolder = "/media/thiago/BigStorage/Datasets/rgbd_dataset_freiburg1_plant/";
-    //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
-    //    string datasetFolder = "/media/thiago/BigStorage/Datasets/mickey/";
-    //    string datasetFolder = "/Users/thiago/Datasets/car/";
-    //    string datasetFolder = "/Users/thiago/Datasets/desk/";
-    //    string datasetFolder = "/media/thiago/BigStorage/Datasets/sculp/";
+
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
-    int initFrame = 0;
+    int initFrame = 50;
     int finalFrame = 1000;
 
     shared_ptr<PointCloudExtended> pcdExtended = std::make_shared<PointCloudExtended>();
-    shared_ptr<PointCloud> pcdVisualizer = std::make_shared<PointCloud>();
+    shared_ptr<PointCloudExtended> pcdVisualizer = std::make_shared<PointCloudExtended>();
     shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
 
     int step = 1;
     VectorXd lastPose;
     lastPose.setZero(6);
     for (int i = initFrame; i < depthFiles.size()-1; i+=step) {
-
-//        Visualizer vis;
-//        vis.CreateVisualizerWindow("Visualization", 640, 480);
-//        vis.GetRenderOption().point_size_ = 1;
-//        vis.GetViewControl().SetViewMatrices(initCam);
-
-//        if (generateMesh){
-//            vis.AddGeometry({mesh});
-//        }
-//        else{
-//            vis.AddGeometry({pcdVisualizer});
-//        }
-//        vis.UpdateGeometry();
-//        vis.UpdateRender();
-//        vis.PollEvents();
 
         int i1 = i;
         int i2 = i1 + step;
@@ -122,9 +102,7 @@ int main(int argc, char *argv[]){
 
             if (!generateMesh){
                 projectPointCloudExtended(*pcdExtended, maxDistProjection, transf.inverse(),
-                                          intrinsics, depthScale, initFrame, i1, depth2, index2);
-//                projectPointCloud(*pcdVisualizer, maxDistProjection, depthScale, transf.inverse(),
-//                                  intrinsics, depth2, index2);
+                                          intrinsics, depthScale, radius, initFrame, i1, depth2, index2);
                 imshow("index", index2);
             }
             else{
@@ -153,32 +131,30 @@ int main(int argc, char *argv[]){
         //Visualization
         shared_ptr<RGBDImage> rgbdImage;
         Mat depthTmp;
-        depth1.convertTo(depthTmp, CV_32FC1, 1.f/depthScale);
-        Mat depth1Filter;
-        bilateralFilter(depthTmp, depth1Filter, 0, 0.5, 0.5);
+        depth1.convertTo(depthTmp, CV_64FC1, 1.0/depthScale);
+//        Mat depth1Filter;
+//        bilateralFilter(depthTmp, depth1Filter, 0, 0.0002, 0.0002);
 
-        Mat normalMap1 = getNormalMapFromDepth(depth1Filter, intrinsics, 0, depthScale);
-        Mat maskNormals = getNormalWeight(normalMap1, depth1Filter, intrinsics, false);
+        Mat normalMap1 = getNormalMapFromDepth(depthTmp, intrinsics, 0, depthScale);
+        Mat maskNormals = getNormalWeight(normalMap1, depthTmp, intrinsics, false);
         imshow("normals", maskNormals);
-//        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
-//                                  intrinsics, maxDistProjection, depthScale, &maskNormals);
-//        rgbdImage = ReadRGBDImage(rgbPath1.c_str(), depthPath1.c_str(),
-//                                  intrinsics, maxDistProjection, depthScale);
 
         Mat depthTmp2;
-        depth2.convertTo(depthTmp2, CV_32FC1, 1.f/depthScale);
-        Mat depth2Filter;
-        bilateralFilter(depthTmp2, depth2Filter, 0, 0.5, 0.5);
-        Mat normalMap2 = getNormalMapFromDepth(depth2Filter, intrinsics, 0, depthScale);
-        Mat model = getNormalWeight(normalMap2, depth2Filter, intrinsics);
-        imshow("model", model);
+        depth2.convertTo(depthTmp2, CV_64FC1, 1.0/depthScale);
+//        Mat depth2Filter;
+//        bilateralFilter(depthTmp2, depth2Filter, 0, 0.0002, 0.0002);
+        Mat normalMap2 = getNormalMapFromDepth(depthTmp2, intrinsics, 0, depthScale);
+        Mat model = getNormalWeight(normalMap2, depthTmp2, intrinsics);
+        imshow("preview", model);
 
-        depth1Filter.convertTo(depth1, CV_16UC1, depthScale);
+//        depth1Filter.convertTo(depth1, CV_16UC1, depthScale);
         Image rgb = CreateRGBImageFromMat(&rgb1);
-        Image depth = CreateDepthImageFromMat(&depth1);
+        Image depth = CreateDepthImageFromMat(&depth1, &normalMap1);
         rgbdImage = CreateRGBDImageFromColorAndDepth(rgb, depth, depthScale, 1.5, false);
 
         shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, intrinsics, initCam);
+
+        Vector3d prevTranslation(transf(0,3), transf(1,3), transf(2,3));
 
         Matrix3d prevRotation;
         prevRotation << transf(0,0) , transf(0,1), transf(0,2),
@@ -188,28 +164,31 @@ int main(int argc, char *argv[]){
         Matrix4d prevTransf;
         prevTransf = transf;
 
-        transf = transf * aligner.getMatrixRtFromPose6D(aligner.getPose6D()).inverse();
+        t = aligner.getMatrixRtFromPose6D(aligner.getPose6D()).inverse();
+        transf = transf * t;
+
+        Vector3d translation(transf(0,3), transf(1,3), transf(2,3));
 
         Matrix3d rotation;
         rotation << transf(0,0) , transf(0,1), transf(0,2),
                 transf(1,0) , transf(1,1), transf(1,2),
                 transf(2,0) , transf(2,1), transf(2,2);
 
-        cerr << rotation << endl;
+        double transl = (prevTranslation - translation).norm();
         double angle = acos(((prevRotation.transpose() * rotation).trace()-1)/2);
         angle = isnan(angle) ? 0 : angle;
         angle *= 180/M_PI;
 
+        cerr << "ang: " << angle << "transl:" << transl << endl;
         totalAngle += angle;
+        totalTransl += transl;
         voxelDSAngle += angle;
 
         if (!generateMesh){
             pcd->Transform(transf);
             auto start = high_resolution_clock::now();
-            merge(pcdExtended, pcd, transf.inverse(), intrinsics, depthScale,
-                  totalAngle, normalMap1, maskNormals);
-//            pcdVisualizer->operator +=(*pcd);
-//            pcdVisualizer = VoxelDownSample(*pcdVisualizer, 0.0004);
+            merge(pcdExtended, pcd, prevTransf, transf,
+                  intrinsics, depthScale, totalAngle, normalMap1, maskNormals, radius);
             auto stop = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(stop - start);
             cerr << "Merge time: " << duration.count()/1000000.f << endl;            
@@ -231,17 +210,14 @@ int main(int argc, char *argv[]){
         cerr << "Time elapsed: " << duration.count()/1000000.f << endl;
         cerr << "Frame : " << i << endl;
 
-        cerr << "ANGULO: " << totalAngle << endl;
-//        if(voxelDSAngle > 20){
-//        pcdExtended = VoxelDownSampleExt(pcdExtended, 0.0002, totalAngle, i, 0);
-//            voxelDSAngle = 0;
-//        }
+        cerr << "TRANSLATION: " << totalTransl << endl;
+        cerr << "ANGLE: " << totalAngle << endl;
 
         char key = waitKey(100);
         if(key == '1') imwrite("teste.png", depthOut);
         if(i == finalFrame || key == 'z'){
-//            removeUnstablePoints(pcdExtended);
-//            pcdVisualizer = std::get<0>(geometry::RemoveStatisticalOutliers(*pointCloud, 10, 0.001));
+            removeUnstablePoints(pcdExtended);
+//pcdVisualizer = std::get<0>(geometry::RemoveStatisticalOutliers(*pointCloud, 10, 0.001));
 
             Visualizer vis;
             vis.CreateVisualizerWindow("Visualization", 800, 600);

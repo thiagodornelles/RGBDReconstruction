@@ -80,7 +80,7 @@ public:
                                       Mat &normalsWeight,
                                       MatrixXd &residuals, MatrixXd &jacobians,
                                       int level, bool color = true, bool depth = true)
-    {
+    {        
         double scaleFactor = 1.0 / pow(2, level);
         //level comes in reverse order 2 > 1 > 0
         double intScales[] = { 0.0001, 0.0001, 0.0001 };
@@ -251,7 +251,8 @@ public:
                 int transfC_int = static_cast<int>(round(transfC));
                 //******* END Projection of PointCloud on the image plane ********
                 //Checks if this pixel projects inside of the source image
-                if((transfR_int >= 0 && transfR_int < nRows) && (transfC_int >= 0 && transfC_int < nCols)
+                if((transfR_int >= 0 && transfR_int < nRows) &&
+                        (transfC_int >= 0 && transfC_int < nCols)
                         && refPoint3D(2) > minDist && refPoint3D(2) < maxDist) {
                     double pixInt1 = *(refIntImage.ptr<uchar>(y, x))/255.f;
                     double pixInt2 = *(actIntImage.ptr<uchar>(transfR_int, transfC_int))/255.f;
@@ -266,7 +267,7 @@ public:
                     double dDep = pixDep2 - pixDep1;
 //                    dDep = pixDep1 == 0 ? 0 : dDep;
 //                    dDep = pixDep2 == 0 ? 0 : dDep;
-                    dDep = abs(dDep) > 0.01 ? 0 : dDep;
+                    dDep = abs(dDep) > 0.01 ? 0 : dDep;                    
                     double wDep = *normalsWeight.ptr<double>(transfR_int, transfC_int);
                     wInt = wDep;
                     double maxCurv = 0.5;
@@ -286,7 +287,7 @@ public:
                     jacobians(i*2,4) = wInt * jacobianIntensity(0,4);
                     jacobians(i*2,5) = wInt * jacobianIntensity(0,5);
 
-                    residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep * depth * 10;
+                    residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep * depth;
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt * color;
 
                     residualImage.at<double>(transfR_int, transfC_int) = dInt * color;
@@ -432,7 +433,7 @@ public:
         double gradientNorm = gradients.norm();
         if(gradientNorm < lastGradientNorm){
             lastGradientNorm = gradientNorm;
-//            cerr << "best pose by grad: " << lastGradientNorm << endl;
+            cerr << "best pose by grad: " << lastGradientNorm << endl;
             bestPoseVector6D = actualPoseVector6D;
             return true;
         }
@@ -485,7 +486,8 @@ public:
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                          tempActGray, tempActDepth,
-                         pyrWNormals[l], residuals, jacobians, l);
+                         pyrWNormals[l], residuals, jacobians, l);                
+
                 minimized = doSingleIteration(residuals, jacobians, lambdas[l], threshold[l]);
             }
         }
