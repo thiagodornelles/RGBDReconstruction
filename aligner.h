@@ -433,7 +433,7 @@ public:
         double gradientNorm = gradients.norm();
         if(gradientNorm < lastGradientNorm){
             lastGradientNorm = gradientNorm;
-            cerr << "best pose by grad: " << lastGradientNorm << endl;
+//            cerr << "best pose by grad: " << lastGradientNorm << endl;
             bestPoseVector6D = actualPoseVector6D;
             return true;
         }

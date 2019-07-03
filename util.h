@@ -21,7 +21,8 @@ using namespace cv;
 using namespace std;
 using namespace rgbd;
 
-const int confThresh = 1;
+const int confThresh = 3;
+double angleInsert = 0;
 
 Image CreateDepthImageFromMat(Mat *matImage, Mat *normalMap = NULL)
 {
@@ -31,7 +32,12 @@ Image CreateDepthImageFromMat(Mat *matImage, Mat *normalMap = NULL)
     matImage->forEach<ushort>(
                 [&](ushort &pixel, const int *pos) -> void
     {
-        if(*normalMap->ptr(pos[0], pos[1]) > 0){
+        if(normalMap == NULL){
+            uint8_t *pData = &(data[(pos[0] * matImage->cols + pos[1])*2]);
+            *pData++ = pixel & 0xff;
+            *pData = pixel >> 8;
+        }
+        else if(*normalMap->ptr(pos[0], pos[1]) > 0){
             uint8_t *pData = &(data[(pos[0] * matImage->cols + pos[1])*2]);
             *pData++ = pixel & 0xff;
             *pData = pixel >> 8;
@@ -188,18 +194,10 @@ Mat getNormalMapFromPointCloud(shared_ptr<PointCloud> pointCloud, PinholeCameraI
     }
 
     Mat filtered = Mat::zeros(normals.rows, normals.cols, CV_64FC1);
-//    double fovX = 2 * atan(640 / (2 * intrinsics.GetFocalLength().first)) * 180.0 / CV_PI;
-//    double fovY = 2 * atan(480 / (2 * intrinsics.GetFocalLength().second)) * 180.0 / CV_PI;
-//    float aspectRatio = intrinsics.width_ / (float)intrinsics.height_; // assuming width > height
-
     normals.forEach<Vec3d>(
                 [&](Vec3d &pixel, const int *pos) -> void
     {
-//        float Px = (2 * ((pos[1] + 0.5) / intrinsics.width_) - 1) * tan(fovX / 2 * M_PI / 180) * aspectRatio;
-//        float Py = (1 - 2 * ((pos[0] + 0.5) / intrinsics.height_)) * tan(fovY / 2 * M_PI / 180);
-//        Vec3d camAxis(Px, Py, -1);
         Vec3d camAxis(0, 0, -1);
-//        camAxis = normalize(camAxis);
         double uv = pixel.dot(camAxis);
         uv = cos(acos(uv) * angleThres);
         filtered.at<double>(pos[0], pos[1]) = uv < 0.0 ? 0 : uv;
@@ -242,7 +240,7 @@ Mat getNormalWeight(Mat normalMap, Mat depth, PinholeCameraIntrinsic intrinsics,
     double fx = intrinsics.GetFocalLength().first;
     double fy = intrinsics.GetFocalLength().second;
     double width = intrinsics.width_;
-    double height = intrinsics.height_;
+    double height = intrinsics.height_;    
 //    double fovX = 2 * atan(width / (2 * fx)) * 180.0 / CV_PI;
 //    double fovY = 2 * atan(height / (2 * fy)) * 180.0 / CV_PI;
 //    float aspectRatio = depth.cols / (float)depth.rows; // assuming width > height
@@ -263,6 +261,7 @@ Mat getNormalWeight(Mat normalMap, Mat depth, PinholeCameraIntrinsic intrinsics,
         }
     }
     );
+
 
     if (dilateBorders){
         erode(filtered, filtered, getStructuringElement(MORPH_CROSS, Size(3, 3)));
@@ -322,12 +321,13 @@ void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
                 *depthMap.ptr<ushort>(transfR_int, transfC_int) = value;
                 *indexMap.ptr<int>(transfR_int, transfC_int) = i;
                 circle(indexMap, Point(transfC_int, transfR_int), radius, i, -1);
-//                circle(depthMap, Point(transfC_int, transfR_int), radius, value, -1);
+                circle(depthMap, Point(transfC_int, transfR_int), radius, value, -1);
             }
         }
     }
     depthMap.setTo(0, depthMap == 65535);
-    medianBlur(depthMap, depthMap, 5);
+    medianBlur(depthMap, depthMap, 3);
+//    erode(depthMap, depthMap, getStructuringElement(MORPH_CROSS, Size(3, 3)));
 }
 
 
@@ -377,12 +377,13 @@ void projectPointCloud(PointCloud pointCloud, double maxDist, double depthScale,
                 *depthMap.ptr<ushort>(transfR_int, transfC_int) = value;
                 *indexMap.ptr<int>(transfR_int, transfC_int) = i;                
                 circle(indexMap, Point(transfC_int, transfR_int), radius, i, -1);
-//                circle(depthMap, Point(transfC_int, transfR_int), radius, value, -1);
+                circle(depthMap, Point(transfC_int, transfR_int), radius, value, -1);
             }
         }
     }
     depthMap.setTo(0, depthMap == 65535);
-    medianBlur(depthMap, depthMap, 5);
+    medianBlur(depthMap, depthMap, 3);
+//    erode(depthMap, depthMap, getStructuringElement(MORPH_CROSS, Size(3, 3)));
 }
 
 Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics){
@@ -485,15 +486,17 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
     //Aging of points
     for (int i = 0; i < model->points_.size(); ++i) {
         model->frameCounter_[i]++;
-        if( model->frameCounter_[i] > confThresh && model->hitCounter_[i] < confThresh){
+        if(model->frameCounter_[i] > confThresh && model->hitCounter_[i] < confThresh){
             model->points_.erase(model->points_.begin() + i);
             model->colors_.erase(model->colors_.begin() + i);
             model->frameCounter_.erase(model->frameCounter_.begin() + i);
             model->hitCounter_.erase(model->hitCounter_.begin() + i);
             model->angle_.erase(model->angle_.begin() + i);
+            model->radius_.erase(model->radius_.begin() + i);
             removed++;
         }
     }
+
     cerr << removed << " points removed\n";
 
     Mat depth1, depth2;
@@ -504,9 +507,9 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
     projectPointCloud(*lastFrame, 2, depthScale, transf.inverse(), intrinsics, depth2,
                       lastFrameIdx, radius);
 
-    imshow("model", depth1*10);
-    imshow("lastframe", depth2*10);
-    waitKey(0);
+//    imshow("model", depth1*10);
+//    imshow("lastframe", depth2*10);
+//    waitKey(0);
 
     int addNew = 0;
     int addInFrontOf = 0;
@@ -524,21 +527,31 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
             if(normal <= 0)
                 continue;
 
+            double newRadius = 1;
+//            if(lastIdx >= 0){
+//                double zfn = -lastFrame->points_[lastIdx](2)*depthScale;
+//                zfn /= normal;
+//                newRadius = 1/sqrt(2) * zfn;
+//                cerr << "new radius " << newRadius << endl;
+//            }
+
             //Two points are into a line of sight from camera
             if(lastIdx >= 0 && modIdx >= 0){
 
-//                double angDiff = abs(model->angle_[modIdx] - angle);
                 Eigen::Vector3d modelPoint = model->points_[modIdx];
                 Eigen::Vector3d modelColor = model->colors_[modIdx];
                 Eigen::Vector3d framePoint = lastFrame->points_[lastIdx];
                 Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
                 //Two points close enough to get fused
                 double diff = abs(modelPoint(2) - framePoint(2));
+                double angleDiff = abs(model->angle_[modIdx] - angle);
+
                 if(diff < 0.005){
                     model->hitCounter_[modIdx]++;
                     int n = model->hitCounter_[modIdx];// > 10 ? 10 : model->hitCounter_[modIdx];
                     model->points_[modIdx] = (modelPoint * (n-normal)/n + framePoint * normal/n);
-                    model->colors_[modIdx] = (modelColor * (n-1)/n + frameColor * 1/n);
+                    model->colors_[modIdx] = (modelColor * (n-normal)/n + frameColor * normal/n);
+                    model->radius_[modIdx] = newRadius;
                     fused++;
                 }
                 //Far enough to be another point in front of this point
@@ -550,6 +563,7 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
                     model->hitCounter_.push_back(0);
                     model->frameCounter_.push_back(0);
                     model->angle_.push_back(angle);
+                    model->radius_.push_back(newRadius);
                     addInFrontOf++;
                 }
             }
@@ -562,6 +576,7 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
                 model->hitCounter_.push_back(0);
                 model->frameCounter_.push_back(0);
                 model->angle_.push_back(angle);
+                model->radius_.push_back(newRadius);
                 addNew++;
             }
         }

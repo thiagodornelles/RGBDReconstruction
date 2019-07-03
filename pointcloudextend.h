@@ -18,11 +18,14 @@ public:
         frameCounter_.reserve(size);
         frameCounter_.assign(size, 0);
         angle_.reserve(size);
-        angle_.assign(size, 0);        
+        angle_.assign(size, 0);
+        radius_.reserve(size);
+        radius_.assign(size, 3);
     }
 
 public:    
     vector<double> angle_;
+    vector<double> radius_;
     vector<int> hitCounter_;
     vector<int> frameCounter_;
     VisibilityDome visibility;
