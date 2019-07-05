@@ -21,7 +21,7 @@ using namespace cv;
 using namespace std;
 using namespace rgbd;
 
-const int confThresh = 0;
+const int confThresh = 3;
 double angleInsert = 0;
 
 Image CreateDepthImageFromMat(Mat *matImage, Mat *normalMap = NULL)
@@ -113,8 +113,7 @@ Mat getNormalMap(Mat &depth, double depthScale, bool dilateBorders = false, doub
     Mat normals = Mat::zeros(depth.rows, depth.cols, CV_32FC3);
     Mat temp;
     depth.convertTo(temp, CV_32FC1, 1.0/depthScale);
-    Mat filteredDepth;
-    //    bilateralFilter(temp, filteredDepth, 3, 1, 1);
+    Mat filteredDepth;    
     GaussianBlur(temp, filteredDepth, Size(3,3), 1);
     for(int x = 1; x < depth.cols - 1; ++x){
         for(int y = 1; y < depth.rows - 1; ++y){
@@ -212,7 +211,7 @@ Mat getNormalMapFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsics, int lev
                           double depthScale){
 
     double scaleFactor = 1.0 / pow(2, level);
-    double nearbNormals[] = { 7, 7, 3};
+    double nearbNormals[] = { 3, 3, 3};
 
     Mat K = (Mat_<double>(3, 3) << intrinsics.GetFocalLength().first * scaleFactor,
              0, intrinsics.GetPrincipalPoint().first * scaleFactor,
@@ -237,22 +236,25 @@ Mat getNormalWeight(Mat normalMap, Mat depth, PinholeCameraIntrinsic intrinsics,
                     double angleCut = 0){
 
     Mat filtered = Mat::zeros(normalMap.rows, normalMap.cols, CV_64FC1);
+    double cx = intrinsics.GetPrincipalPoint().first;
+    double cy = intrinsics.GetPrincipalPoint().second;
     double fx = intrinsics.GetFocalLength().first;
     double fy = intrinsics.GetFocalLength().second;
     double width = intrinsics.width_;
     double height = intrinsics.height_;
-    //    double fovX = 2 * atan(width / (2 * fx)) * 180.0 / CV_PI;
-    //    double fovY = 2 * atan(height / (2 * fy)) * 180.0 / CV_PI;
-    //    float aspectRatio = depth.cols / (float)depth.rows; // assuming width > height
+    double fovX = 2 * atan(width / (2 * fx)) * 180.0 / CV_PI;
+    double fovY = 2 * atan(height / (2 * fy)) * 180.0 / CV_PI;
+    float aspectRatio = depth.cols / (float)depth.rows; // assuming width > height
 
     normalMap.forEach<Vec3d>([&](Vec3d &pixel, const int *pos) -> void
     {
         if(depth.at<double>(pos[0], pos[1]) > 0 ){
-            //            float Px = (2 * ((pos[1] + 0.5) / depth.cols) - 1) *
-            //                    tan(fovX / 2 * M_PI / 180) * aspectRatio;
-            //            float Py = (1 - 2 * ((pos[0] + 0.5) / depth.rows)) *
-            //                    tan(fovY / 2 * M_PI / 180);
-            Vec3d camAxis(0, 0, -1);
+            float px = (2 * ((pos[1] + 0.5) / depth.cols) - 1) *
+                    tan(fovX / 2 * M_PI / 180) * aspectRatio;
+            float py = (1 - 2 * ((pos[0] + 0.5) / depth.rows)) *
+                    tan(fovY / 2 * M_PI / 180);
+            cerr << "(" << px << "," << py << ")\n";
+            Vec3d camAxis(px, py, -1);
             camAxis = normalize(camAxis);
             pixel = normalize(pixel);
             double uv = pixel.dot(camAxis);
@@ -290,9 +292,9 @@ void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
 
     for (int i = 0; i < pointCloud.points_.size(); i++) {
 
-//        if(pointCloud.hitCounter_[i] < confThresh && actualFrame + initialFrame > confThresh){
-//            continue;
-//        }
+        if(pointCloud.hitCounter_[i] < confThresh && actualFrame + initialFrame > confThresh){
+            continue;
+        }
 
         Eigen::Vector3d pcdPoint = pointCloud.points_[i];
         Eigen::Vector4d refPoint3d;
@@ -326,8 +328,7 @@ void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
         }
     }
     depthMap.setTo(0, depthMap == 65535);
-    medianBlur(depthMap, depthMap, 3);
-    //    erode(depthMap, depthMap, getStructuringElement(MORPH_CROSS, Size(3, 3)));
+    medianBlur(depthMap, depthMap, 3);    
 }
 
 
@@ -382,8 +383,7 @@ void projectPointCloud(PointCloud pointCloud, double maxDist, double depthScale,
         }
     }
     depthMap.setTo(0, depthMap == 65535);
-    medianBlur(depthMap, depthMap, 3);
-    //    erode(depthMap, depthMap, getStructuringElement(MORPH_CROSS, Size(3, 3)));
+    medianBlur(depthMap, depthMap, 3);    
 }
 
 Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics){
@@ -577,6 +577,8 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
                     int n = model->hitCounter_[modIdx];// > 10 ? 10 : model->hitCounter_[modIdx];
                     model->points_[modIdx] = (modelPoint * (n-normal)/n + framePoint * normal/n);
                     model->colors_[modIdx] = (modelColor * (n-normal)/n + frameColor * normal/n);
+//                    model->points_[modIdx] = (modelPoint * (0.5) + framePoint * 0.5);
+//                    model->colors_[modIdx] = (modelColor * (0.5) + frameColor * 0.5);
                     model->radius_[modIdx] = newRadius;
                     fused++;
                 }

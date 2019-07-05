@@ -65,7 +65,7 @@ int main(int argc, char *argv[]){
 
     ScalableTSDFVolume tsdf(1.f/depthScale, 0.005, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/Users/thiago/Datasets/gabrielaGAP/";
+    string datasetFolder = "/media/thiago/BigStorage/gabrielaGAP/";
 
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
@@ -137,7 +137,7 @@ int main(int argc, char *argv[]){
 //        bilateralFilter(depthTmp, depth1Filter, 0, 0.0002, 0.0002);
 
         Mat normalMap1 = getNormalMapFromDepth(depthTmp, intrinsics, 0, depthScale);
-        Mat maskNormals = getNormalWeight(normalMap1, depthTmp, intrinsics, false, 1.0);
+        Mat maskNormals = getNormalWeight(normalMap1, depthTmp, intrinsics, false);
 //        GaussianBlur(maskNormals, maskNormals, Size(3,3), 1);
         imshow("normals", maskNormals);
 
