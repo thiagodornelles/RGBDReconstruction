@@ -21,7 +21,7 @@ using namespace cv;
 using namespace std;
 using namespace rgbd;
 
-const int confThresh = 3;
+const int confThresh = 0;
 double angleInsert = 0;
 
 Image CreateDepthImageFromMat(Mat *matImage, Mat *normalMap = NULL)
@@ -114,7 +114,7 @@ Mat getNormalMap(Mat &depth, double depthScale, bool dilateBorders = false, doub
     Mat temp;
     depth.convertTo(temp, CV_32FC1, 1.0/depthScale);
     Mat filteredDepth;
-//    bilateralFilter(temp, filteredDepth, 3, 1, 1);
+    //    bilateralFilter(temp, filteredDepth, 3, 1, 1);
     GaussianBlur(temp, filteredDepth, Size(3,3), 1);
     for(int x = 1; x < depth.cols - 1; ++x){
         for(int y = 1; y < depth.rows - 1; ++y){
@@ -137,7 +137,7 @@ Mat getNormalMap(Mat &depth, double depthScale, bool dilateBorders = false, doub
     normals.forEach<Vec3f>([&](Vec3f &pixel, const int *pos) -> void
     {
         double uv = pixel.dot(camAxis);
-//        uv = cos(acos(uv) * angleThres);
+        //        uv = cos(acos(uv) * angleThres);
         uv = -cos(uv)+1;
         *filtered.ptr<double>(pos[0], pos[1]) = uv;// < 0 ? 0 : uv;
     }
@@ -240,18 +240,18 @@ Mat getNormalWeight(Mat normalMap, Mat depth, PinholeCameraIntrinsic intrinsics,
     double fx = intrinsics.GetFocalLength().first;
     double fy = intrinsics.GetFocalLength().second;
     double width = intrinsics.width_;
-    double height = intrinsics.height_;    
-//    double fovX = 2 * atan(width / (2 * fx)) * 180.0 / CV_PI;
-//    double fovY = 2 * atan(height / (2 * fy)) * 180.0 / CV_PI;
-//    float aspectRatio = depth.cols / (float)depth.rows; // assuming width > height
+    double height = intrinsics.height_;
+    //    double fovX = 2 * atan(width / (2 * fx)) * 180.0 / CV_PI;
+    //    double fovY = 2 * atan(height / (2 * fy)) * 180.0 / CV_PI;
+    //    float aspectRatio = depth.cols / (float)depth.rows; // assuming width > height
 
     normalMap.forEach<Vec3d>([&](Vec3d &pixel, const int *pos) -> void
     {
         if(depth.at<double>(pos[0], pos[1]) > 0 ){
-//            float Px = (2 * ((pos[1] + 0.5) / depth.cols) - 1) *
-//                    tan(fovX / 2 * M_PI / 180) * aspectRatio;
-//            float Py = (1 - 2 * ((pos[0] + 0.5) / depth.rows)) *
-//                    tan(fovY / 2 * M_PI / 180);
+            //            float Px = (2 * ((pos[1] + 0.5) / depth.cols) - 1) *
+            //                    tan(fovX / 2 * M_PI / 180) * aspectRatio;
+            //            float Py = (1 - 2 * ((pos[0] + 0.5) / depth.rows)) *
+            //                    tan(fovY / 2 * M_PI / 180);
             Vec3d camAxis(0, 0, -1);
             camAxis = normalize(camAxis);
             pixel = normalize(pixel);
@@ -271,9 +271,9 @@ Mat getNormalWeight(Mat normalMap, Mat depth, PinholeCameraIntrinsic intrinsics,
 }
 
 void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
-                       Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics,
-                       double depthScale, double radius, int initialFrame, int actualFrame,
-                       Mat &depthMap, Mat &indexMap){
+                               Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics,
+                               double depthScale, double radius, int initialFrame, int actualFrame,
+                               Mat &depthMap, Mat &indexMap){
 
     int width = intrinsics.width_;
     int height = intrinsics.height_;
@@ -320,14 +320,14 @@ void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
             if(value < lastZ){
                 *depthMap.ptr<ushort>(transfR_int, transfC_int) = value;
                 *indexMap.ptr<int>(transfR_int, transfC_int) = i;
-                circle(indexMap, Point(transfC_int, transfR_int), radius, i, -1);
-                circle(depthMap, Point(transfC_int, transfR_int), radius, value, -1);
+                //                circle(indexMap, Point(transfC_int, transfR_int), radius, i, -1);
+//                circle(depthMap, Point(transfC_int, transfR_int), 2, value, -1);
             }
         }
     }
     depthMap.setTo(0, depthMap == 65535);
     medianBlur(depthMap, depthMap, 3);
-//    erode(depthMap, depthMap, getStructuringElement(MORPH_CROSS, Size(3, 3)));
+    //    erode(depthMap, depthMap, getStructuringElement(MORPH_CROSS, Size(3, 3)));
 }
 
 
@@ -375,15 +375,15 @@ void projectPointCloud(PointCloud pointCloud, double maxDist, double depthScale,
 
             if(value < lastZ){
                 *depthMap.ptr<ushort>(transfR_int, transfC_int) = value;
-                *indexMap.ptr<int>(transfR_int, transfC_int) = i;                
-                circle(indexMap, Point(transfC_int, transfR_int), radius, i, -1);
-                circle(depthMap, Point(transfC_int, transfR_int), radius, value, -1);
+                *indexMap.ptr<int>(transfR_int, transfC_int) = i;
+                //                circle(indexMap, Point(transfC_int, transfR_int), radius, i, -1);
+                //                circle(depthMap, Point(transfC_int, transfR_int), radius, value, -1);
             }
         }
     }
     depthMap.setTo(0, depthMap == 65535);
     medianBlur(depthMap, depthMap, 3);
-//    erode(depthMap, depthMap, getStructuringElement(MORPH_CROSS, Size(3, 3)));
+    //    erode(depthMap, depthMap, getStructuringElement(MORPH_CROSS, Size(3, 3)));
 }
 
 Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics){
@@ -433,23 +433,40 @@ Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeC
 
 void removeUnstablePoints(shared_ptr<PointCloudExtended> model){
     //Aging of points
-    int removed = 0;
+    vector<int> keepPoints;
     for (int i = 0; i < model->points_.size(); ++i) {
         if(model->hitCounter_[i] < confThresh){
-            model->points_.erase(model->points_.begin() + i);
-            model->colors_.erase(model->colors_.begin() + i);
-            model->frameCounter_.erase(model->frameCounter_.begin() + i);
-            model->hitCounter_.erase(model->hitCounter_.begin() + i);
-            model->angle_.erase(model->angle_.begin() + i);
-            removed++;
+            keepPoints.push_back(0);
+        }
+        else{
+            keepPoints.push_back(1);
         }
     }
-    cerr << removed << " points removed\n";
+    int k = 0;
+    int totalPoints = model->points_.size();
+    for(int i = 0; i < model->points_.size(); i++){
+        if(keepPoints[i] > 0){
+            model->points_[k] = model->points_[i];
+            model->colors_[k] = model->colors_[i];
+            model->frameCounter_[k] = model->frameCounter_[i];
+            model->hitCounter_[k] = model->hitCounter_[i];
+            model->angle_[k] = model->angle_[i];
+            model->radius_[k] = model->radius_[i];
+            k++;
+        }
+    }
+    model->points_.resize(k);
+    model->colors_.resize(k);
+    model->frameCounter_.resize(k);
+    model->hitCounter_.resize(k);
+    model->angle_.resize(k);
+    model->radius_.resize(k);
+    cerr << "Removed points " << totalPoints - k << endl;
 }
 
 shared_ptr<PointCloudExtended> VoxelDownSampleExt(shared_ptr<PointCloudExtended> &input,
-                                               double voxel_size){
-//    PointCloud pc = *input;
+                                                  double voxel_size){
+    //    PointCloud pc = *input;
     shared_ptr<PointCloudExtended> pointCloud = std::make_shared<PointCloudExtended>();
     shared_ptr<PointCloud> pcd = std::make_shared<PointCloud>();
     pcd = std::get<0>(geometry::RemoveStatisticalOutliers(*input, 10, 0.1));
@@ -467,10 +484,10 @@ shared_ptr<PointCloudExtended> VoxelDownSampleExt(shared_ptr<PointCloudExtended>
 }
 
 double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFrame,
-           Eigen::Matrix4d prevTransf,
-           Eigen::Matrix4d transf, PinholeCameraIntrinsic intrinsics,
-           double depthScale, double angle, Mat normalMap,
-           Mat normalWeight = Mat(), double radius = 1){
+             Eigen::Matrix4d prevTransf,
+             Eigen::Matrix4d transf, PinholeCameraIntrinsic intrinsics,
+             double depthScale, double angle, Mat normalMap,
+             Mat normalWeight = Mat(), double radius = 1){
 
     //At first model comes empty then will be fullfilled with first frame's points
     if(model->IsEmpty()){
@@ -482,34 +499,50 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
         return 0;
     }
 
-    int removed = 0;
-    //Aging of points
+    //********* Point Removal **********//
+    vector<int> keepPoints;
     for (int i = 0; i < model->points_.size(); ++i) {
         model->frameCounter_[i]++;
         if(model->frameCounter_[i] > confThresh && model->hitCounter_[i] < confThresh){
-            model->points_.erase(model->points_.begin() + i);
-            model->colors_.erase(model->colors_.begin() + i);
-            model->frameCounter_.erase(model->frameCounter_.begin() + i);
-            model->hitCounter_.erase(model->hitCounter_.begin() + i);
-            model->angle_.erase(model->angle_.begin() + i);
-            model->radius_.erase(model->radius_.begin() + i);
-            removed++;
+            keepPoints.push_back(0);
+        }
+        else{
+            keepPoints.push_back(1);
         }
     }
+    int k = 0;
+    int totalPoints = model->points_.size();
+    for(int i = 0; i < model->points_.size(); i++){
+        if(keepPoints[i] > 0){
+            model->points_[k] = model->points_[i];
+            model->colors_[k] = model->colors_[i];
+            model->frameCounter_[k] = model->frameCounter_[i];
+            model->hitCounter_[k] = model->hitCounter_[i];
+            model->angle_[k] = model->angle_[i];
+            model->radius_[k] = model->radius_[i];
+            k++;
+        }
+    }
+    model->points_.resize(k);
+    model->colors_.resize(k);
+    model->frameCounter_.resize(k);
+    model->hitCounter_.resize(k);
+    model->angle_.resize(k);
+    model->radius_.resize(k);
+    cerr << "Removed points " << totalPoints - k << endl;
 
-    cerr << removed << " points removed\n";
+    //********* Point Removal **********//
 
     Mat depth1, depth2;
     Mat modelIdx, lastFrameIdx;
-
     projectPointCloud(*model, 2, depthScale, prevTransf.inverse(), intrinsics, depth1,
                       modelIdx, radius);
     projectPointCloud(*lastFrame, 2, depthScale, transf.inverse(), intrinsics, depth2,
                       lastFrameIdx, radius);
 
-//    imshow("model", depth1*10);
-//    imshow("lastframe", depth2*10);
-//    waitKey(0);
+    //    imshow("model", depth1*10);
+    //    imshow("lastframe", depth2*10);
+    //    waitKey(0);
 
     int addNew = 0;
     int addInFrontOf = 0;
@@ -528,13 +561,6 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
                 continue;
 
             double newRadius = 1;
-//            if(lastIdx >= 0){
-//                double zfn = -lastFrame->points_[lastIdx](2)*depthScale;
-//                zfn /= normal;
-//                newRadius = 1/sqrt(2) * zfn;
-//                cerr << "new radius " << newRadius << endl;
-//            }
-
             //Two points are into a line of sight from camera
             if(lastIdx >= 0 && modIdx >= 0){
 
@@ -570,7 +596,8 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
             //A new point
             else if(lastIdx >= 0 && modIdx == -1){
                 Eigen::Vector3d framePoint = lastFrame->points_[lastIdx];
-                Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
+                //                Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
+                Eigen::Vector3d frameColor(1,0,0);
                 model->points_.push_back(framePoint);
                 model->colors_.push_back(frameColor);
                 model->hitCounter_.push_back(0);
@@ -584,8 +611,8 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
     cerr << "Fused points: " << fused << endl;
     cerr << "New points: " << addNew << endl;
     cerr << "New points in front of " << addInFrontOf << endl;
-//    waitKey(100);
-//    cerr << "Total points " << model->points_.size() << endl;
+    //    waitKey(100);
+    //    cerr << "Total points " << model->points_.size() << endl;
     return (addInFrontOf + 1.0)/(model->points_.size()+1.0);
 }
 #endif

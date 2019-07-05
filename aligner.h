@@ -259,7 +259,7 @@ public:
                     double pixDep1 = trfPoint3D(2);
                     double pixDep2 = *(actDepImage.ptr<double>(transfR_int, transfC_int));
 
-                    //Assign the pixel residual and jacobian to itsa corresponding row
+                    //Assign the pixel residual and jacobian to its corresponding row
                     uint i = nCols * y + x;
 
                     //Residual of the pixel
@@ -267,7 +267,7 @@ public:
                     double dDep = pixDep2 - pixDep1;
 //                    dDep = pixDep1 == 0 ? 0 : dDep;
 //                    dDep = pixDep2 == 0 ? 0 : dDep;
-                    dDep = abs(dDep) > 0.01 ? 0 : dDep;                    
+                    dDep = abs(dDep) > 0.005 ? 0 : dDep;
                     double wDep = *normalsWeight.ptr<double>(transfR_int, transfC_int);
                     wInt = wDep;
                     double maxCurv = 0.5;
@@ -291,7 +291,7 @@ public:
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt * color;
 
                     residualImage.at<double>(transfR_int, transfC_int) = dInt * color;
-                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = 100 * dDep * depth;
+                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = 1000  * wDep * dDep * depth;
                 }
             }            
         }, nthreads

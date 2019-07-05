@@ -27,11 +27,11 @@ using namespace std;
 using namespace cv;
 using namespace std::chrono;
 
-bool generateMesh = true;
+bool generateMesh = false;
 double totalAngle = 0;
 double totalTransl = 0;
 double voxelDSAngle = 0;
-double radius = 0.5;
+double radius = 0.25;
 
 int main(int argc, char *argv[]){
 
@@ -65,7 +65,7 @@ int main(int argc, char *argv[]){
 
     ScalableTSDFVolume tsdf(1.f/depthScale, 0.005, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/media/thiago/BigStorage/gabrielaGAP/";
+    string datasetFolder = "/Users/thiago/Datasets/gabrielaGAP/";
 
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]){
                                   transf.inverse(), intrinsics, depth2, index2);
             }
             imshow("index", index2);
-//            imshow("projection", depth2 * 10);
+            imshow("projection", depth2 * 10);
         }        
         Mat gray1;
         Mat gray2;
@@ -131,12 +131,14 @@ int main(int argc, char *argv[]){
         //Visualization
         shared_ptr<RGBDImage> rgbdImage;
         Mat depthTmp;
+//        medianBlur(depth1, depth1, 3);
         depth1.convertTo(depthTmp, CV_64FC1, 1.0/depthScale);
 //        Mat depth1Filter;
 //        bilateralFilter(depthTmp, depth1Filter, 0, 0.0002, 0.0002);
 
         Mat normalMap1 = getNormalMapFromDepth(depthTmp, intrinsics, 0, depthScale);
-        Mat maskNormals = getNormalWeight(normalMap1, depthTmp, intrinsics, false);
+        Mat maskNormals = getNormalWeight(normalMap1, depthTmp, intrinsics, false, 1.0);
+//        GaussianBlur(maskNormals, maskNormals, Size(3,3), 1);
         imshow("normals", maskNormals);
 
         Mat depthTmp2;
