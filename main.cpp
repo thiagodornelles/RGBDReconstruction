@@ -65,7 +65,7 @@ int main(int argc, char *argv[]){
 
     ScalableTSDFVolume tsdf(1.f/depthScale, 0.005, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/media/thiago/BigStorage/gabrielaGAP/";
+    string datasetFolder = "/Users/thiago/Datasets/gabrielaGAP/";
 
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
@@ -142,7 +142,7 @@ int main(int argc, char *argv[]){
         imshow("normals", maskNormals);
 
         Mat depthTmp2;
-        depth2.convertTo(depthTmp2, CV_64FC1, 1.0/depthScale);
+        depth2.convertTo(depthTmp2, CV_64FC1, 1.0/depthScale);        
 //        Mat depth2Filter;
 //        bilateralFilter(depthTmp2, depth2Filter, 0, 0.0002, 0.0002);
         Mat normalMap2 = getNormalMapFromDepth(depthTmp2, intrinsics, 0, depthScale);
@@ -151,7 +151,7 @@ int main(int argc, char *argv[]){
 
 //        depth1Filter.convertTo(depth1, CV_16UC1, depthScale);
         Image rgb = CreateRGBImageFromMat(&rgb1);
-        Image depth = CreateDepthImageFromMat(&depth1);
+        Image depth = CreateDepthImageFromMat(&depth1, &maskNormals);
         rgbdImage = CreateRGBDImageFromColorAndDepth(rgb, depth, depthScale, 1.5, false);
 
         shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, intrinsics, initCam);
@@ -190,7 +190,7 @@ int main(int argc, char *argv[]){
             pcd->Transform(transf);
             auto start = high_resolution_clock::now();
             merge(pcdExtended, pcd, prevTransf, transf,
-                  intrinsics, depthScale, totalAngle, normalMap1, maskNormals, radius);
+                  intrinsics, depthScale, totalAngle, maskNormals, radius);
             auto stop = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(stop - start);
             cerr << "Merge time: " << duration.count()/1000000.f << endl;            

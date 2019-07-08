@@ -17,14 +17,14 @@ public:
         hitCounter_.assign(size, 0);
         frameCounter_.reserve(size);
         frameCounter_.assign(size, 0);
-        angle_.reserve(size);
-        angle_.assign(size, 0);
+        confidence_.reserve(size);
+        confidence_.assign(size, 0);
         radius_.reserve(size);
         radius_.assign(size, 3);
     }
 
 public:    
-    vector<double> angle_;
+    vector<double> confidence_;
     vector<double> radius_;
     vector<int> hitCounter_;
     vector<int> frameCounter_;
