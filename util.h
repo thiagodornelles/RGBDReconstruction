@@ -21,7 +21,7 @@ using namespace cv;
 using namespace std;
 using namespace rgbd;
 
-const int confThresh = 3;
+const int confThresh = 0;
 double angleInsert = 0;
 
 Image CreateDepthImageFromMat(Mat *matImage, Mat *normalMap = NULL)
@@ -322,7 +322,7 @@ void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
                 *depthMap.ptr<ushort>(transfR_int, transfC_int) = value;
                 *indexMap.ptr<int>(transfR_int, transfC_int) = i;
                 //circle(indexMap, Point(transfC_int, transfR_int), radius, i, -1);
-                //circle(depthMap, Point(transfC_int, transfR_int), 2, value, -1);
+                //circle(depthMap, Point(transfC_int, transfR_int), radius, value, -1);
             }
         }
     }
@@ -434,7 +434,9 @@ void removeUnstablePoints(shared_ptr<PointCloudExtended> model){
     //Aging of points
     vector<int> keepPoints;
     for (int i = 0; i < model->points_.size(); ++i) {
-        if(model->hitCounter_[i] < confThresh){
+        model->frameCounter_[i]++;
+        if(model->frameCounter_[i] > 30 && model->hitCounter_[i] < 10){
+            model->frameCounter_[i] = 0;
             keepPoints.push_back(0);
         }
         else{
@@ -498,39 +500,8 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
         return 0;
     }
 
-    //********* Point Removal **********//
-    vector<int> keepPoints;
-    for (int i = 0; i < model->points_.size(); ++i) {
-        model->frameCounter_[i]++;
-        if(model->frameCounter_[i] > confThresh && model->hitCounter_[i] < confThresh){
-            keepPoints.push_back(0);
-        }
-        else{
-            keepPoints.push_back(1);
-        }
-    }
-    int k = 0;
-    int totalPoints = model->points_.size();
-    for(int i = 0; i < model->points_.size(); i++){
-        if(keepPoints[i] > 0){
-            model->points_[k] = model->points_[i];
-            model->colors_[k] = model->colors_[i];
-            model->frameCounter_[k] = model->frameCounter_[i];
-            model->hitCounter_[k] = model->hitCounter_[i];
-            model->confidence_[k] = model->confidence_[i];
-            model->radius_[k] = model->radius_[i];
-            k++;
-        }
-    }
-    model->points_.resize(k);
-    model->colors_.resize(k);
-    model->frameCounter_.resize(k);
-    model->hitCounter_.resize(k);
-    model->confidence_.resize(k);
-    model->radius_.resize(k);
-    cerr << "Removed points " << totalPoints - k << endl;
-
-    //********* Point Removal **********//
+    //Point removal
+    removeUnstablePoints(model);
 
     Mat depth1, depth2;
     Mat modelIdx, lastFrameIdx;
@@ -561,12 +532,9 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
 
             ushort depth = *depth2.ptr<ushort>(r, c);
             double newRadius = depth;
-//            if(modIdx >= 0 && model->radius_[modIdx] < depth
-//                    && model->confidence_[modIdx] > 0.95){
-//                continue;
-//            }
-
-
+            if(modIdx >= 0 && model->confidence_[modIdx] > 30){
+                continue;
+            }
             //Two points are into a line of sight from camera
             if(lastIdx >= 0 && modIdx >= 0){                
                 Eigen::Vector3d modelPoint = model->points_[modIdx];
@@ -578,14 +546,13 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
 
                 if(diff < 0.005){
                     model->hitCounter_[modIdx]++;
-                    double n = model->hitCounter_[modIdx];
-                    double cModel = (-1/(n+1))+1;
-                    model->confidence_[modIdx] = cModel;
+                    double n = model->confidence_[modIdx];
                     model->radius_[modIdx] = newRadius;
-                    model->points_[modIdx] = (modelPoint * cModel + framePoint * pixelNormal)/
-                            (cModel + pixelNormal);
-                    model->colors_[modIdx] = (modelColor * cModel + frameColor * pixelNormal)/
-                            (cModel + pixelNormal);                    
+                    model->points_[modIdx] = (modelPoint * n + framePoint * pixelNormal)/
+                            (n + pixelNormal);
+                    model->colors_[modIdx] = (modelColor * n + frameColor * pixelNormal)/
+                            (n + pixelNormal);
+                    model->confidence_[modIdx] += pixelNormal;
                     fused++;
                 }
                 //Far enough to be another point in front of this point

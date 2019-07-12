@@ -37,7 +37,6 @@ int main(int argc, char *argv[]){
 
     cerr << CV_VERSION << endl;
 
-    //    SetVerbosityLevel(VerbosityLevel::VerboseAlways);
     Eigen::Matrix4d t = Eigen::Matrix4d::Identity();
     Eigen::Matrix4d transf = Eigen::Matrix4d::Identity();
     transf <<  1,  0,  0,  0,
@@ -108,8 +107,8 @@ int main(int argc, char *argv[]){
                 projectPointCloud(*tsdf.ExtractPointCloud(), maxDistProjection, depthScale,
                                   transf.inverse(), intrinsics, depth2, index2);
             }
-            imshow("index", index2);
-            imshow("projection", depth2 * 10);
+//            imshow("index", index2);
+//            imshow("projection", depth2 * 10);
         }        
         Mat gray1;
         Mat gray2;
@@ -131,25 +130,18 @@ int main(int argc, char *argv[]){
         //Visualization
         shared_ptr<RGBDImage> rgbdImage;
         Mat depthTmp;
-//        medianBlur(depth1, depth1, 3);
         depth1.convertTo(depthTmp, CV_64FC1, 1.0/depthScale);
-//        Mat depth1Filter;
-//        bilateralFilter(depthTmp, depth1Filter, 0, 0.0002, 0.0002);
 
         Mat normalMap1 = getNormalMapFromDepth(depthTmp, intrinsics, 0, depthScale);
         Mat maskNormals = getNormalWeight(normalMap1, depthTmp, intrinsics, false);
-//        GaussianBlur(maskNormals, maskNormals, Size(3,3), 1);
         imshow("normals", maskNormals);
 
         Mat depthTmp2;
         depth2.convertTo(depthTmp2, CV_64FC1, 1.0/depthScale);        
-//        Mat depth2Filter;
-//        bilateralFilter(depthTmp2, depth2Filter, 0, 0.0002, 0.0002);
         Mat normalMap2 = getNormalMapFromDepth(depthTmp2, intrinsics, 0, depthScale);
         Mat model = getNormalWeight(normalMap2, depthTmp2, intrinsics);
         imshow("preview", model);
 
-//        depth1Filter.convertTo(depth1, CV_16UC1, depthScale);
         Image rgb = CreateRGBImageFromMat(&rgb1);
         Image depth = CreateDepthImageFromMat(&depth1, &maskNormals);
         rgbdImage = CreateRGBDImageFromColorAndDepth(rgb, depth, depthScale, 1.5, false);
@@ -190,7 +182,7 @@ int main(int argc, char *argv[]){
             pcd->Transform(transf);
             auto start = high_resolution_clock::now();
             merge(pcdExtended, pcd, prevTransf, transf,
-                  intrinsics, depthScale, totalAngle, maskNormals, radius);
+                  intrinsics, depthScale, totalAngle, maskNormals);
             auto stop = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(stop - start);
             cerr << "Merge time: " << duration.count()/1000000.f << endl;            
@@ -216,7 +208,6 @@ int main(int argc, char *argv[]){
         char key = waitKey(100);
         if(key == '1') imwrite("teste.png", depthOut);
         if(i == finalFrame || key == 'z'){
-            removeUnstablePoints(pcdExtended);            
             Visualizer vis;
             vis.CreateVisualizerWindow("Visualization", 800, 600);
             vis.GetRenderOption().point_size_ = 2;

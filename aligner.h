@@ -148,17 +148,9 @@ public:
                 gradPixDepth(0,0) = *actDepDerivX.ptr<double>(y, x);
                 gradPixDepth(0,1) = *actDepDerivY.ptr<double>(y, x);
 
-//                double wInt = 1;
                 double wInt = gradPixIntensity(0,0) * gradPixIntensity(0,0);
                 wInt += gradPixIntensity(0,1) * gradPixIntensity(0,1);
                 wInt = sqrt(wInt);
-//                if (wInt > 0.001){
-//                    wInt = 1;
-//                    count++;
-//                }
-//                else{
-//                    wInt = 0;
-//                }
 
                 //******* BEGIN Unprojection of DepthMap ********
                 Vector4d refPoint3D;
@@ -480,7 +472,7 @@ public:
             //            cerr << "Iniciando de:" << endl;
             //            cerr << getMatrixRtFromPose6D(actualPoseVector6D);
             bool minimized = true;
-            int countAdjust = 0;
+
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
