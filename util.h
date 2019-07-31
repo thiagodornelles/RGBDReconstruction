@@ -435,7 +435,7 @@ void removeUnstablePoints(shared_ptr<PointCloudExtended> model){
     vector<int> keepPoints;
     for (int i = 0; i < model->points_.size(); ++i) {
         model->frameCounter_[i]++;
-        if(model->frameCounter_[i] > 30 && model->hitCounter_[i] < 10){
+        if(model->frameCounter_[i] > 30 && model->confidence_[i] < 10){
             model->frameCounter_[i] = 0;
             keepPoints.push_back(0);
         }
@@ -532,9 +532,9 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
 
             ushort depth = *depth2.ptr<ushort>(r, c);
             double newRadius = depth;
-            if(modIdx >= 0 && model->confidence_[modIdx] > 30){
-                continue;
-            }
+//            if(modIdx >= 0 && model->confidence_[modIdx] > 30){
+//                continue;
+//            }
             //Two points are into a line of sight from camera
             if(lastIdx >= 0 && modIdx >= 0){                
                 Eigen::Vector3d modelPoint = model->points_[modIdx];
@@ -548,7 +548,7 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
                     model->hitCounter_[modIdx]++;
                     double n = model->confidence_[modIdx];
                     model->radius_[modIdx] = newRadius;
-                    model->points_[modIdx] = (modelPoint * n + framePoint * pixelNormal)/
+                    model->points_[modIdx](2) = (modelPoint(2) * n + framePoint(2) * pixelNormal)/
                             (n + pixelNormal);
                     model->colors_[modIdx] = (modelColor * n + frameColor * pixelNormal)/
                             (n + pixelNormal);
@@ -556,7 +556,7 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
                     fused++;
                 }
                 //Far enough to be another point in front of this point
-                else if (modelPoint(2) - framePoint(2) >= 0.05){
+                else if (modelPoint(2) - framePoint(2) >= 0.01){
                     Eigen::Vector3d framePoint = lastFrame->points_[lastIdx];
                     Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
                     model->points_.push_back(framePoint);
@@ -571,8 +571,8 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
             //A new point
             else if(lastIdx >= 0 && modIdx == -1){
                 Eigen::Vector3d framePoint = lastFrame->points_[lastIdx];
-                //Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
-                Eigen::Vector3d frameColor(1,0,0);
+                Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
+                //Eigen::Vector3d frameColor(1,0,0);
                 model->points_.push_back(framePoint);
                 model->colors_.push_back(frameColor);
                 model->hitCounter_.push_back(0);

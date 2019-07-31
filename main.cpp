@@ -25,6 +25,7 @@ using namespace open3d::integration;
 using namespace open3d::visualization;
 using namespace std;
 using namespace cv;
+
 using namespace std::chrono;
 
 bool generateMesh = false;
@@ -64,13 +65,14 @@ int main(int argc, char *argv[]){
 
     ScalableTSDFVolume tsdf(1.f/depthScale, 0.005, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/Users/thiago/Datasets/gabrielaGAP/";
+    string datasetFolder = "/media/thiago/BigStorage/Gabriela/";
+//    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
 
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
-    int initFrame = 0;
+    int initFrame = 2;
     int finalFrame = 1000;
 
     shared_ptr<PointCloudExtended> pcdExtended = std::make_shared<PointCloudExtended>();
@@ -79,9 +81,12 @@ int main(int argc, char *argv[]){
 
     int step = 1;
     VectorXd lastPose;
+    bool lastValid = true;
     lastPose.setZero(6);
     for (int i = initFrame; i < depthFiles.size()-1; i+=step) {
-
+//        if(!lastValid){
+//            aligner.bestPoseVector6D.setZero(6);
+//        }
         int i1 = i;
         int i2 = i1 + step;
         string depthPath1 = datasetFolder + "depth/" + depthFiles[i1];
@@ -115,9 +120,11 @@ int main(int argc, char *argv[]){
         cvtColor(rgb1, gray1, CV_BGR2GRAY);
         cvtColor(rgb2, gray2, CV_BGR2GRAY);
 
+//        GaussianBlur(gray1, gray1, Size(3,3), 1);
+//        GaussianBlur(gray2, gray2, Size(3,3), 1);
 //        threshold(depth1, depth1, 1000, 65535, THRESH_TOZERO_INV);
 //        erode(depth1, depth1, getStructuringElement(MORPH_CROSS, Size(3, 3)));
-//        erode(depth2, depth2, getStructuringElement(MORPH_CROSS, Size(5, 5)));
+//        erode(depth2, depth2, getStructuringElement(MORPH_CROSS, Size(3, 3)));
 
         Mat grayOut, depthOut;
         hconcat(gray1, gray2, grayOut);
@@ -158,7 +165,8 @@ int main(int argc, char *argv[]){
         Matrix4d prevTransf;
         prevTransf = transf;
 
-        t = aligner.getMatrixRtFromPose6D(aligner.getPose6D()).inverse();
+//        t = aligner.getMatrixRtFromPose6D(aligner.getPose6D()).inverse();
+        t = aligner.getPoseExponentialMap2(aligner.getPose6D()).inverse();
         transf = transf * t;
 
         Vector3d translation(transf(0,3), transf(1,3), transf(2,3));
@@ -190,9 +198,16 @@ int main(int argc, char *argv[]){
 
         //************ ALIGNMENT ************//
         auto start = high_resolution_clock::now();
-        VectorXd pose = aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
+//        aligner.setInitialPoseVector(aligner.getPose6D());
+        std::pair<VectorXd, bool> result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
+        VectorXd pose = result.first;
+        lastValid = result.second;
+        if(!result.second){
+            cerr << "Bad aligment, skip this" << endl;
+            waitKey(2000);
+        }
         auto stop = high_resolution_clock::now();                
-        cerr << "Obtida transf:\n" << aligner.getMatrixRtFromPose6D(pose) << endl;
+        cerr << "Obtida transf:\n" << aligner.getPoseExponentialMap2(pose) << endl;
 
         if (generateMesh){
             tsdf.Integrate(*rgbdImage, intrinsics, transf.inverse());            
@@ -212,7 +227,7 @@ int main(int argc, char *argv[]){
             vis.CreateVisualizerWindow("Visualization", 800, 600);
             vis.GetRenderOption().point_size_ = 2;
             vis.GetRenderOption().background_color_ = Eigen::Vector3d(0.2,0.1,0.6);
-            vis.GetRenderOption().show_coordinate_frame_ = true;
+            vis.GetRenderOption().show_coordinate_frame_ = false;
             vis.GetRenderOption().mesh_show_back_face_ = true;
             vis.GetViewControl().SetViewMatrices(initCam);
             if(generateMesh){
