@@ -17,6 +17,7 @@
 #include <Eigen/Core>
 
 #include "filereader.h"
+#include "fastbilateral.h"
 #include "util.h"
 #include "aligner.h"
 
@@ -35,6 +36,12 @@ double voxelDSAngle = 0;
 double radius = 0.25;
 
 int main(int argc, char *argv[]){
+
+    if(argc > 1){
+        string genMesh = argv[1];
+        if(genMesh == "mesh")
+            generateMesh = true;
+    }
 
     cerr << CV_VERSION << endl;
 
@@ -65,14 +72,14 @@ int main(int argc, char *argv[]){
 
     ScalableTSDFVolume tsdf(1.f/depthScale, 0.005, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/media/thiago/BigStorage/Gabriela/";
+    string datasetFolder = "/Users/thiago/Datasets/gabrielaGAP/";
 //    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
 
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
 
-    int initFrame = 2;
+    int initFrame = 52;
     int finalFrame = 1000;
 
     shared_ptr<PointCloudExtended> pcdExtended = std::make_shared<PointCloudExtended>();
@@ -118,13 +125,15 @@ int main(int argc, char *argv[]){
         Mat gray1;
         Mat gray2;
         cvtColor(rgb1, gray1, CV_BGR2GRAY);
-        cvtColor(rgb2, gray2, CV_BGR2GRAY);
-
+        cvtColor(rgb2, gray2, CV_BGR2GRAY);        
 //        GaussianBlur(gray1, gray1, Size(3,3), 1);
 //        GaussianBlur(gray2, gray2, Size(3,3), 1);
 //        threshold(depth1, depth1, 1000, 65535, THRESH_TOZERO_INV);
 //        erode(depth1, depth1, getStructuringElement(MORPH_CROSS, Size(3, 3)));
 //        erode(depth2, depth2, getStructuringElement(MORPH_CROSS, Size(3, 3)));
+        cv_extend::bilateralFilter(gray1, gray1, 5, 5);
+        cv_extend::bilateralFilter(gray2, gray2, 5, 5);
+        cv_extend::bilateralFilter(depth1, depth1, 5, 1);
 
         Mat grayOut, depthOut;
         hconcat(gray1, gray2, grayOut);
@@ -136,11 +145,11 @@ int main(int argc, char *argv[]){
 
         //Visualization
         shared_ptr<RGBDImage> rgbdImage;
-        Mat depthTmp;
-        depth1.convertTo(depthTmp, CV_64FC1, 1.0/depthScale);
+        Mat depthTmp1;
+        depth1.convertTo(depthTmp1, CV_64FC1, 1.0/depthScale);
 
-        Mat normalMap1 = getNormalMapFromDepth(depthTmp, intrinsics, 0, depthScale);
-        Mat maskNormals = getNormalWeight(normalMap1, depthTmp, intrinsics, false);
+        Mat normalMap1 = getNormalMapFromDepth(depthTmp1, intrinsics, 0, depthScale);
+        Mat maskNormals = getNormalWeight(normalMap1, depthTmp1, intrinsics, false);
         imshow("normals", maskNormals);
 
         Mat depthTmp2;
@@ -204,10 +213,10 @@ int main(int argc, char *argv[]){
         lastValid = result.second;
         if(!result.second){
             cerr << "Bad aligment, skip this" << endl;
-            waitKey(2000);
+//            waitKey(2000);
         }
         auto stop = high_resolution_clock::now();                
-        cerr << "Obtida transf:\n" << aligner.getPoseExponentialMap2(pose) << endl;
+        cerr << "Obtida transf:\n" << aligner.getPoseExponentialMap2(pose).inverse() << endl;
 
         if (generateMesh){
             tsdf.Integrate(*rgbdImage, intrinsics, transf.inverse());            

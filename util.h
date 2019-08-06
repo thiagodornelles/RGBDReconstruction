@@ -501,10 +501,11 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
     }
 
     //Point removal
-    removeUnstablePoints(model);
+//    removeUnstablePoints(model);
 
     Mat depth1, depth2;
     Mat modelIdx, lastFrameIdx;
+
     projectPointCloud(*model, 2, depthScale, prevTransf.inverse(), intrinsics, depth1,
                       modelIdx, radius);
     projectPointCloud(*lastFrame, 2, depthScale, transf.inverse(), intrinsics, depth2,
@@ -556,7 +557,7 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
                     fused++;
                 }
                 //Far enough to be another point in front of this point
-                else if (modelPoint(2) - framePoint(2) >= 0.01){
+                else if (modelPoint(2) - framePoint(2) >= 0.02){
                     Eigen::Vector3d framePoint = lastFrame->points_[lastIdx];
                     Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
                     model->points_.push_back(framePoint);

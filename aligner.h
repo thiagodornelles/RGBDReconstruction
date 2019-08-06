@@ -84,8 +84,8 @@ public:
     {
         double scaleFactor = 1.0 / pow(2, level);
         //level comes in reverse order 2 > 1 > 0
-        double intScales[] = { 0.001, 0.001, 0.001 };
-        double depScales[] = { 0.001, 0.001, 0.001 };
+        double intScales[] = { 0.0001, 0.0001, 0.0001 };
+        double depScales[] = { 0.0001, 0.0001, 0.0001 };
 
         Mat residualImage = Mat::zeros(refIntImage.rows * 2, refIntImage.cols, CV_64FC1);
         Mat actIntDerivX = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
@@ -101,12 +101,12 @@ public:
         //        imshow("wDep", normalsWeight);
 
         //Extrinsecs
-        //        double x = bestPoseVector6D(0);
-        //        double y = bestPoseVector6D(1);
-        //        double z = bestPoseVector6D(2);
-        double yaw = bestPoseVector6D(3);
-        double pitch = bestPoseVector6D(4);
-        double roll = bestPoseVector6D(5);
+        double x = bestPoseVector6D(0);
+        double y = bestPoseVector6D(1);
+        double z = bestPoseVector6D(2);
+        double yaw = actualPoseVector6D(3);
+        double pitch = actualPoseVector6D(4);
+        double roll = actualPoseVector6D(5);
 
         //Intrinsecs
         double cx = scaleFactor * intrinsecs.GetPrincipalPoint().first;
@@ -122,7 +122,7 @@ public:
         int nCols = refIntImage.cols;
         int nRows = refIntImage.rows;
         double thisSum = 0;
-        int nthreads = 4;
+        const int nthreads = 4;
         double count[nthreads] = {0};
 
         cv::setNumThreads(nthreads);
@@ -189,17 +189,17 @@ public:
 
                 //Derivative w.r.t yaw
                 jacobianRt(0,3) = 0;
-                jacobianRt(1,3) = roll;
-                jacobianRt(2,3) = -pitch;
+                jacobianRt(1,3) = -pz;
+                jacobianRt(2,3) = py;
 
                 //Derivative w.r.t pitch
-                jacobianRt(0,4) = -roll;
+                jacobianRt(0,4) = pz;
                 jacobianRt(1,4) = 0;
-                jacobianRt(2,4) = yaw;
+                jacobianRt(2,4) = -px;
 
                 //Derivative w.r.t roll
-                jacobianRt(0,5) = pitch;
-                jacobianRt(1,5) = -yaw;
+                jacobianRt(0,5) = -py;
+                jacobianRt(1,5) = px;
                 jacobianRt(2,5) = 0;
 
                 //                //Derivative w.r.t yaw
@@ -259,15 +259,16 @@ public:
 
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
+//                    dInt = abs(dInt) > 0.5 ? 0 : dInt;
                     double dDep = pixDep2 - pixDep1;
-                    dDep = pixDep1 == 0 ? 0 : dDep;
-                    dDep = pixDep2 == 0 ? 0 : dDep;
-//                    dDep = abs(dDep) > 0.001 ? 0 : dDep;
+//                    dDep = pixDep1 == 0 ? 0 : dDep;
+//                    dDep = pixDep2 == 0 ? 0 : dDep;
+                    dDep = abs(dDep) > 0.001 ? 0 : dDep;
                     double wDep = *normalsWeight.ptr<double>(transfR_int, transfC_int);
-                    wInt = wDep;
-                    double maxCurv = 0.5;
-                    double minCurv = 0.2;
-                    wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
+//                    wInt = wDep;
+//                    double maxCurv = 1.0;
+//                    double minCurv = 0.2;
+//                    wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
 
                     jacobians(i,0)   = wDep * jacobianDepth(0,0);
                     jacobians(i,1)   = wDep * jacobianDepth(0,1);
@@ -317,13 +318,12 @@ public:
             totalCount += count[i];
         }
         double outlierRatio = 100 * totalCount / (double)(nCols * nRows);
-        cerr << "Count " << outlierRatio << " %" << endl;
+        //        cerr << "Count " << outlierRatio << " %" << endl;
 
         return outlierRatio;
     }
 
     Matrix4d getPoseExponentialMap2(VectorXd poseVector6D){
-        //        Matrix4d pose = Matrix4d::Identity();
         double x = poseVector6D(0);
         double y = poseVector6D(1);
         double z = poseVector6D(2);
@@ -355,37 +355,38 @@ public:
 
         double phi = w.norm();
 
-        if( phi > 100. * std::numeric_limits<double>::epsilon()){
-            Matrix3d hat;
-            hat(0,1) = 0;
-            hat(1,1) = z;
-            hat(2,1) = -y;
-            hat(0,2) = -z;
-            hat(1,2) = 0;
-            hat(2,2) = x;
-            hat(0,3) = y;
-            hat(1,3) = -x;
-            hat(2,3) = 0;
+        //        if( phi > 100. * std::numeric_limits<double>::epsilon()){
+        Matrix3d hat;
+        hat(0,0) = 0;
+        hat(1,0) = roll;
+        hat(2,0) = -pitch;
+        hat(0,1) = -roll;
+        hat(1,1) = 0;
+        hat(2,1) = yaw;
+        hat(0,2) = pitch;
+        hat(1,2) = -yaw;
+        hat(2,2) = 0;
+        pose.block( 0, 0, 3, 3 ) = hat;
+        pose.block( 0, 3, 3, 1 ) = t;
 
-            //RODRIGUES
-            Matrix3d R = Matrix3d::Identity();
-            if( phi > 100. * std::numeric_limits<double>::epsilon() )
-            {
-                double inv_phi = 1. / phi;
-                R += inv_phi * hat * sin(phi) + (inv_phi * inv_phi) *
-                        hat * hat * (1. - cos(phi));
-            }
-            pose.block( 0, 0, 3, 3 ) = R;
-            double inv_phi = 1. / phi;
-            Matrix3d V = Matrix3d::Identity() +
-                    ( inv_phi * inv_phi ) * ( 1. - cos( phi )  ) * hat +
-                    ( inv_phi * inv_phi * inv_phi ) * ( phi - sin( phi ) ) * hat * hat;
-            pose.block( 0, 3, 3, 1 ) = V * t;
-        }
-        else{
-            pose.block( 0, 3, 3, 1 ) = t;
-        }
-        cerr << pose << endl;
+        //RODRIGUES
+        //            Matrix3d R = Matrix3d::Identity();
+        //            if( phi > 100. * std::numeric_limits<double>::epsilon() )
+        //            {
+        //                double inv_phi = 1. / phi;
+        //                R += inv_phi * hat * sin(phi) + (inv_phi * inv_phi) *
+        //                        hat * hat * (1. - cos(phi));
+        //            }
+        //            pose.block( 0, 0, 3, 3 ) = R;
+        //            double inv_phi = 1. / phi;
+        //            Matrix3d V = Matrix3d::Identity() +
+        //                    ( inv_phi * inv_phi ) * ( 1. - cos( phi )  ) * hat +
+        //                    ( inv_phi * inv_phi * inv_phi ) * ( phi - sin( phi ) ) * hat * hat;
+        //            pose.block( 0, 3, 3, 1 ) = V * t;
+        //        }
+        //        else{
+        //            pose.block( 0, 3, 3, 1 ) = t;
+        //        }
         return pose;
     }
 
@@ -426,12 +427,13 @@ public:
     bool doSingleIteration(MatrixXd &residuals, MatrixXd &jacobians,
                            double lambda, double threshold){
 
-        //        double chi = residuals.squaredNorm();
-        //        cerr << "chi squared " << chi << endl;
-        //        if(chi > threshold){
-        //            cerr << "Escalando o erro " << endl;
-        //            residuals *= sqrt(threshold/chi);
-        //        }
+//        double chi = residuals.squaredNorm();
+//        cerr << "chi squared " << chi << endl;
+//        if(chi > 10){
+//            cerr << "Escalando o erro " << endl;
+//            residuals *= sqrt(10.f/chi);
+//        }
+
         MatrixXd gradients = jacobians.transpose() * residuals;
         MatrixXd hessian = jacobians.transpose() * jacobians;
         MatrixXd identity;
@@ -444,7 +446,7 @@ public:
         identity(5,5) = hessian(5,5);
         hessian += lambda * identity;
         actualPoseVector6D -= hessian.ldlt().solve(gradients);
-//        actualPoseVector6D -= hessian.inverse() * gradients;
+        //        actualPoseVector6D -= hessian.inverse() * gradients;
         //Gets best transform until now
         double gradientNorm = gradients.norm();
         if(gradientNorm < lastGradientNorm){
@@ -475,11 +477,12 @@ public:
         Mat tempRefDepth, tempActDepth;
 
         this->actualPoseVector6D.setZero(6);
-        int iteratLevel[] = { 7, 5, 5 };
+        int iteratLevel[] = { 10, 5, 3 };
         double lambdas[] = { 0.0002, 0.0002, 0.0002 };
         double threshold[] = { 80, 160, 160 };
 
         for (int l = 2; l >= 0; l--) {
+            actualPoseVector6D = bestPoseVector6D;
             int level = pow(2, l);
             int rows = refGray.rows/level;
             int cols = refGray.cols/level;
