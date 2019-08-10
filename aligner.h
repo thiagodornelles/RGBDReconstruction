@@ -477,8 +477,8 @@ public:
         Mat tempRefDepth, tempActDepth;
 
         this->actualPoseVector6D.setZero(6);
-        int iteratLevel[] = { 10, 5, 3 };
-        double lambdas[] = { 0.0002, 0.0002, 0.0002 };
+        int iteratLevel[] = { 10, 5, 5 };
+        double lambdas[] = { 0.0002, 0.02, 0.1 };
         double threshold[] = { 80, 160, 160 };
 
         for (int l = 2; l >= 0; l--) {

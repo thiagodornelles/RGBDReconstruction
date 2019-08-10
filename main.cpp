@@ -37,10 +37,22 @@ double radius = 0.25;
 
 int main(int argc, char *argv[]){
 
+    int initFrame = 0;
+    int finalFrame = 1000;
+
     if(argc > 1){
         string genMesh = argv[1];
-        if(genMesh == "mesh")
+        if(genMesh == "mesh"){
             generateMesh = true;
+            if(argc == 4){
+                initFrame = atoi(argv[2]);
+                finalFrame = atoi(argv[3]);
+            }
+        }
+        else{
+            initFrame = atoi(argv[1]);
+            finalFrame = atoi(argv[2]);
+        }
     }
 
     cerr << CV_VERSION << endl;
@@ -78,9 +90,6 @@ int main(int argc, char *argv[]){
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
-
-    int initFrame = 52;
-    int finalFrame = 1000;
 
     shared_ptr<PointCloudExtended> pcdExtended = std::make_shared<PointCloudExtended>();
     shared_ptr<PointCloudExtended> pcdVisualizer = std::make_shared<PointCloudExtended>();
@@ -131,9 +140,10 @@ int main(int argc, char *argv[]){
 //        threshold(depth1, depth1, 1000, 65535, THRESH_TOZERO_INV);
 //        erode(depth1, depth1, getStructuringElement(MORPH_CROSS, Size(3, 3)));
 //        erode(depth2, depth2, getStructuringElement(MORPH_CROSS, Size(3, 3)));
-        cv_extend::bilateralFilter(gray1, gray1, 5, 5);
-        cv_extend::bilateralFilter(gray2, gray2, 5, 5);
-        cv_extend::bilateralFilter(depth1, depth1, 5, 1);
+        cv_extend::bilateralFilter(gray1, gray1, 10, 3);
+        cv_extend::bilateralFilter(gray2, gray2, 10, 3);
+        cv_extend::bilateralFilter(depth1, depth1, 5, 3);
+//        cv_extend::bilateralFilter(depth2, depth2, 5, 3);
 
         Mat grayOut, depthOut;
         hconcat(gray1, gray2, grayOut);

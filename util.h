@@ -327,7 +327,7 @@ void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
         }
     }
     depthMap.setTo(0, depthMap == 65535);
-    medianBlur(depthMap, depthMap, 3);
+//    medianBlur(depthMap, depthMap, 3);
 }
 
 
@@ -382,7 +382,7 @@ void projectPointCloud(PointCloud pointCloud, double maxDist, double depthScale,
         }
     }
     depthMap.setTo(0, depthMap == 65535);
-    medianBlur(depthMap, depthMap, 3);
+//    medianBlur(depthMap, depthMap, 3);
 }
 
 Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics){
@@ -435,7 +435,7 @@ void removeUnstablePoints(shared_ptr<PointCloudExtended> model){
     vector<int> keepPoints;
     for (int i = 0; i < model->points_.size(); ++i) {
         model->frameCounter_[i]++;
-        if(model->frameCounter_[i] > 30 && model->confidence_[i] < 10){
+        if(model->frameCounter_[i] > 3 && model->confidence_[i] < 2){
             model->frameCounter_[i] = 0;
             keepPoints.push_back(0);
         }
@@ -488,7 +488,7 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
              Eigen::Matrix4d prevTransf,
              Eigen::Matrix4d transf, PinholeCameraIntrinsic intrinsics,
              double depthScale, double angle,
-             Mat normalWeight = Mat(), double radius = 1){
+             Mat normalWeight = Mat(), double radius = 0.5){
 
     //At first model comes empty then will be fullfilled with first frame's points
     if(model->IsEmpty()){
@@ -511,9 +511,9 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
     projectPointCloud(*lastFrame, 2, depthScale, transf.inverse(), intrinsics, depth2,
                       lastFrameIdx, radius);
 
-    //    imshow("model", depth1*10);
-    //    imshow("lastframe", depth2*10);
-    //    waitKey(0);
+//    imshow("model", depth1*10);
+//    imshow("lastframe", depth2*10);
+//    waitKey(0);
 
     int addNew = 0;
     int addInFrontOf = 0;
