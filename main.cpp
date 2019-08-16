@@ -11,6 +11,7 @@
 #include <Open3D/Integration/ScalableTSDFVolume.h>
 #include <Open3D/Geometry/Geometry.h>
 #include <Open3D/Geometry/PointCloud.h>
+#include <Open3D/Registration/FastGlobalRegistration.h>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/opencv.hpp>
 
@@ -76,7 +77,7 @@ int main(int argc, char *argv[]){
     //Kinect v2
     //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(512, 424, 363.491, 363.491, 256.496, 207.778);
 
-    double depthScale = 5000.0;
+    double depthScale = 5000;
     double maxDistProjection = 0.3;
     Aligner aligner(intrinsics);
     aligner.setDist(0.1, 0.3);
@@ -84,7 +85,7 @@ int main(int argc, char *argv[]){
 
     ScalableTSDFVolume tsdf(1.f/depthScale, 0.005, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/Users/thiago/Datasets/gabrielaGAP/";
+    string datasetFolder = "/media/thiago/BigStorage/Gabriela/";
 //    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
 
     vector<string> depthFiles, rgbFiles;
@@ -140,10 +141,9 @@ int main(int argc, char *argv[]){
 //        threshold(depth1, depth1, 1000, 65535, THRESH_TOZERO_INV);
 //        erode(depth1, depth1, getStructuringElement(MORPH_CROSS, Size(3, 3)));
 //        erode(depth2, depth2, getStructuringElement(MORPH_CROSS, Size(3, 3)));
-        cv_extend::bilateralFilter(gray1, gray1, 10, 3);
-        cv_extend::bilateralFilter(gray2, gray2, 10, 3);
+        cv_extend::bilateralFilter(gray1, gray1, 5, 3);
+        cv_extend::bilateralFilter(gray2, gray2, 5, 3);
         cv_extend::bilateralFilter(depth1, depth1, 5, 3);
-//        cv_extend::bilateralFilter(depth2, depth2, 5, 3);
 
         Mat grayOut, depthOut;
         hconcat(gray1, gray2, grayOut);
@@ -169,7 +169,7 @@ int main(int argc, char *argv[]){
         imshow("preview", model);
 
         Image rgb = CreateRGBImageFromMat(&rgb1);
-        Image depth = CreateDepthImageFromMat(&depth1, &maskNormals);
+        Image depth = CreateDepthImageFromMat(&depth1, NULL);
         rgbdImage = CreateRGBDImageFromColorAndDepth(rgb, depth, depthScale, 1.5, false);
 
         shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, intrinsics, initCam);
@@ -205,6 +205,24 @@ int main(int argc, char *argv[]){
         totalTransl += transl;
         voxelDSAngle += angle;
 
+        if (i != initFrame){
+
+            shared_ptr<PointCloud> pcdDown = VoxelDownSample(*pcd, 0.05);
+            shared_ptr<PointCloud> modelDown = VoxelDownSample(*tsdf.ExtractPointCloud(), 0.05);
+//            shared_ptr<PointCloud> modelDown = VoxelDownSample(*pcdExtended, 0.05);
+            std::shared_ptr<registration::Feature> source_fpfh, target_fpfh;
+            source_fpfh = registration::ComputeFPFHFeature(
+                        *pcdDown);//, open3d::geometry::KDTreeSearchParamHybrid(0.25, 100));
+            target_fpfh = registration::ComputeFPFHFeature(
+                        *modelDown);//, open3d::geometry::KDTreeSearchParamHybrid(0.25, 100));
+
+            auto fastGlobal = registration::FastGlobalRegistration(*pcdDown, *modelDown,
+                                                                   *source_fpfh, *target_fpfh);
+            cerr << "teste" << endl;
+            cerr << fastGlobal.transformation_ << endl;
+            pcd->Transform(fastGlobal.transformation_.inverse());
+        }
+
         if (!generateMesh){
             pcd->Transform(transf);
             auto start = high_resolution_clock::now();
@@ -217,7 +235,7 @@ int main(int argc, char *argv[]){
 
         //************ ALIGNMENT ************//
         auto start = high_resolution_clock::now();
-//        aligner.setInitialPoseVector(aligner.getPose6D());
+//        aligner.setInitialPoseVector(registration_result.transformation_);
         std::pair<VectorXd, bool> result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
         VectorXd pose = result.first;
         lastValid = result.second;

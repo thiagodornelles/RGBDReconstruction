@@ -327,7 +327,7 @@ void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
         }
     }
     depthMap.setTo(0, depthMap == 65535);
-//    medianBlur(depthMap, depthMap, 3);
+    medianBlur(depthMap, depthMap, 3);
 }
 
 
@@ -382,7 +382,7 @@ void projectPointCloud(PointCloud pointCloud, double maxDist, double depthScale,
         }
     }
     depthMap.setTo(0, depthMap == 65535);
-//    medianBlur(depthMap, depthMap, 3);
+    medianBlur(depthMap, depthMap, 3);
 }
 
 Mat transfAndProject(Mat &depthMap, double maxDist, Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics){

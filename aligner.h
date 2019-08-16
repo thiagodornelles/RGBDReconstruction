@@ -86,6 +86,8 @@ public:
         //level comes in reverse order 2 > 1 > 0
         double intScales[] = { 0.0001, 0.0001, 0.0001 };
         double depScales[] = { 0.0001, 0.0001, 0.0001 };
+        //        double intScales[] = { 0.001, 0.001, 0.001 };
+        //        double depScales[] = { 0.001, 0.001, 0.001 };
 
         Mat residualImage = Mat::zeros(refIntImage.rows * 2, refIntImage.cols, CV_64FC1);
         Mat actIntDerivX = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
@@ -97,6 +99,10 @@ public:
         Scharr(actIntImage, actIntDerivY, CV_64F, 0, 1, intScales[level], 0.0, cv::BORDER_DEFAULT);
         Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, depScales[level], 0.0, cv::BORDER_DEFAULT);
         Scharr(actDepImage, actDepDerivY, CV_64F, 0, 1, depScales[level], 0.0, cv::BORDER_DEFAULT);
+        //        Sobel(actIntImage, actIntDerivX, CV_64F, 1, 0, 3, intScales[level], 0.0, cv::BORDER_DEFAULT);
+        //        Sobel(actIntImage, actIntDerivY, CV_64F, 0, 1, 3, intScales[level], 0.0, cv::BORDER_DEFAULT);
+        //        Sobel(actDepImage, actDepDerivX, CV_64F, 1, 0, 3, depScales[level], 0.0, cv::BORDER_DEFAULT);
+        //        Sobel(actDepImage, actDepDerivY, CV_64F, 0, 1, 3, depScales[level], 0.0, cv::BORDER_DEFAULT);
 
         //        imshow("wDep", normalsWeight);
 
@@ -259,16 +265,16 @@ public:
 
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
-//                    dInt = abs(dInt) > 0.5 ? 0 : dInt;
+                    //                    dInt = abs(dInt) > 0.5 ? 0 : dInt;
                     double dDep = pixDep2 - pixDep1;
-//                    dDep = pixDep1 == 0 ? 0 : dDep;
-//                    dDep = pixDep2 == 0 ? 0 : dDep;
-                    dDep = abs(dDep) > 0.001 ? 0 : dDep;
+                    dDep = pixDep1 == 0 ? 0 : dDep;
+                    dDep = pixDep2 * dDep == 0 ? 0 : dDep;
+                    dDep = abs(dDep) > 0.0005 ? 0 : dDep;
                     double wDep = *normalsWeight.ptr<double>(transfR_int, transfC_int);
-//                    wInt = wDep;
-//                    double maxCurv = 1.0;
-//                    double minCurv = 0.2;
-//                    wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
+                    //wInt *= 10;
+                    //                    double maxCurv = 0.5;
+                    //                    double minCurv = 0.2;
+                    //                    wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
 
                     jacobians(i,0)   = wDep * jacobianDepth(0,0);
                     jacobians(i,1)   = wDep * jacobianDepth(0,1);
@@ -427,12 +433,12 @@ public:
     bool doSingleIteration(MatrixXd &residuals, MatrixXd &jacobians,
                            double lambda, double threshold){
 
-//        double chi = residuals.squaredNorm();
-//        cerr << "chi squared " << chi << endl;
-//        if(chi > 10){
-//            cerr << "Escalando o erro " << endl;
-//            residuals *= sqrt(10.f/chi);
-//        }
+        //        double chi = residuals.squaredNorm();
+        //        cerr << "chi squared " << chi << endl;
+        //        if(chi > 10){
+        //            cerr << "Escalando o erro " << endl;
+        //            residuals *= sqrt(10.f/chi);
+        //        }
 
         MatrixXd gradients = jacobians.transpose() * residuals;
         MatrixXd hessian = jacobians.transpose() * jacobians;
@@ -445,8 +451,8 @@ public:
         identity(4,4) = hessian(4,4);
         identity(5,5) = hessian(5,5);
         hessian += lambda * identity;
-        actualPoseVector6D -= hessian.ldlt().solve(gradients);
-        //        actualPoseVector6D -= hessian.inverse() * gradients;
+        //        actualPoseVector6D -= hessian.ldlt().solve(gradients);
+        actualPoseVector6D -= hessian.inverse() * gradients;
         //Gets best transform until now
         double gradientNorm = gradients.norm();
         if(gradientNorm < lastGradientNorm){
@@ -476,9 +482,9 @@ public:
         Mat tempRefGray, tempActGray;
         Mat tempRefDepth, tempActDepth;
 
-        this->actualPoseVector6D.setZero(6);
+        //        this->actualPoseVector6D.setZero(6);
         int iteratLevel[] = { 10, 5, 5 };
-        double lambdas[] = { 0.0002, 0.02, 0.1 };
+        double lambdas[] = { 0.0002, 0.0002, 0.0002 };
         double threshold[] = { 80, 160, 160 };
 
         for (int l = 2; l >= 0; l--) {
