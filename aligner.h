@@ -107,9 +107,9 @@ public:
         //        imshow("wDep", normalsWeight);
 
         //Extrinsecs
-        double x = bestPoseVector6D(0);
-        double y = bestPoseVector6D(1);
-        double z = bestPoseVector6D(2);
+        double x = actualPoseVector6D(0);
+        double y = actualPoseVector6D(1);
+        double z = actualPoseVector6D(2);
         double yaw = actualPoseVector6D(3);
         double pitch = actualPoseVector6D(4);
         double roll = actualPoseVector6D(5);
@@ -142,8 +142,7 @@ public:
             MatrixXd gradPixIntensity = MatrixXd(1,2);
             MatrixXd gradPixDepth = MatrixXd(1,2);
 
-            int nThread = range.start/range.size();
-            //            cerr << "Thread " << nThread << endl;
+            int nThread = range.start/range.size();            
             for (int r = range.start; r < range.end; r++) {
 
                 int y = r / refDepImage.cols;
@@ -271,7 +270,7 @@ public:
                     dDep = pixDep2 * dDep == 0 ? 0 : dDep;
                     dDep = abs(dDep) > 0.0005 ? 0 : dDep;
                     double wDep = *normalsWeight.ptr<double>(transfR_int, transfC_int);
-                    //wInt *= 10;
+                    //wInt = wDep;
                     //                    double maxCurv = 0.5;
                     //                    double minCurv = 0.2;
                     //                    wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
@@ -344,6 +343,19 @@ public:
                 0.f,   0.f,    0.f, 0.f;
 
         return lie.exp();
+    }
+
+    VectorXd getPoseMatExpToVector(Eigen::Matrix4d_u matrix){
+        VectorXd retVec;
+        retVec.setZero(6);
+        matrix = matrix.log();
+        retVec(0) = matrix(0,3)/5000.;
+        retVec(1) = matrix(1,3)/5000.;
+        retVec(2) = matrix(2,3)/5000.;
+        retVec(3) = matrix(2,1);
+        retVec(4) = matrix(0,2);
+        retVec(5) = matrix(1,0);
+        return retVec;
     }
 
     Matrix4d getPoseExponentialMap(VectorXd poseVector6D){
@@ -482,13 +494,14 @@ public:
         Mat tempRefGray, tempActGray;
         Mat tempRefDepth, tempActDepth;
 
-        //        this->actualPoseVector6D.setZero(6);
         int iteratLevel[] = { 10, 5, 5 };
         double lambdas[] = { 0.0002, 0.0002, 0.0002 };
         double threshold[] = { 80, 160, 160 };
 
         for (int l = 2; l >= 0; l--) {
-            actualPoseVector6D = bestPoseVector6D;
+            if(l != 2){
+                actualPoseVector6D = bestPoseVector6D;
+            }
             int level = pow(2, l);
             int rows = refGray.rows/level;
             int cols = refGray.cols/level;
@@ -500,8 +513,8 @@ public:
 
             this->lastGradientNorm = DBL_MAX;
             this->sum = DBL_MAX;
-            //            cerr << "Iniciando de:" << endl;
-            //            cerr << getMatrixRtFromPose6D(actualPoseVector6D);
+            cerr << "Iniciando de:" << endl;
+            cerr << getPoseExponentialMap2(actualPoseVector6D);
             bool minimized = true;
 
             for (int i = 0; i < iteratLevel[l]; ++i) {
