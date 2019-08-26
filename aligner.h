@@ -107,12 +107,12 @@ public:
         //        imshow("wDep", normalsWeight);
 
         //Extrinsecs
-        double x = actualPoseVector6D(0);
-        double y = actualPoseVector6D(1);
-        double z = actualPoseVector6D(2);
-        double yaw = actualPoseVector6D(3);
-        double pitch = actualPoseVector6D(4);
-        double roll = actualPoseVector6D(5);
+        //        double x = actualPoseVector6D(0);
+        //        double y = actualPoseVector6D(1);
+        //        double z = actualPoseVector6D(2);
+        //        double yaw = actualPoseVector6D(3);
+        //        double pitch = actualPoseVector6D(4);
+        //        double roll = actualPoseVector6D(5);
 
         //Intrinsecs
         double cx = scaleFactor * intrinsecs.GetPrincipalPoint().first;
@@ -142,7 +142,7 @@ public:
             MatrixXd gradPixIntensity = MatrixXd(1,2);
             MatrixXd gradPixDepth = MatrixXd(1,2);
 
-            int nThread = range.start/range.size();            
+            int nThread = range.start/range.size();
             for (int r = range.start; r < range.end; r++) {
 
                 int y = r / refDepImage.cols;
@@ -264,16 +264,16 @@ public:
 
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
-                    //                    dInt = abs(dInt) > 0.5 ? 0 : dInt;
+//                    dInt = abs(dInt) > 0.3 ? 0 : dInt;
                     double dDep = pixDep2 - pixDep1;
                     dDep = pixDep1 == 0 ? 0 : dDep;
                     dDep = pixDep2 * dDep == 0 ? 0 : dDep;
                     dDep = abs(dDep) > 0.0005 ? 0 : dDep;
                     double wDep = *normalsWeight.ptr<double>(transfR_int, transfC_int);
                     //wInt = wDep;
-                    //                    double maxCurv = 0.5;
-                    //                    double minCurv = 0.2;
-                    //                    wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
+                    //double maxCurv = 0.5;
+                    //double minCurv = 0.2;
+                    //wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
 
                     jacobians(i,0)   = wDep * jacobianDepth(0,0);
                     jacobians(i,1)   = wDep * jacobianDepth(0,1);
@@ -342,7 +342,11 @@ public:
                 -pitch,   yaw,    0.f,   z,
                 0.f,   0.f,    0.f, 0.f;
 
-        return lie.exp();
+        lie = lie.exp();
+        //        lie(0,3) = x;
+        //        lie(1,3) = y;
+        //        lie(2,3) = z;
+        return lie;
     }
 
     VectorXd getPoseMatExpToVector(Eigen::Matrix4d_u matrix){
@@ -494,13 +498,16 @@ public:
         Mat tempRefGray, tempActGray;
         Mat tempRefDepth, tempActDepth;
 
-        int iteratLevel[] = { 10, 5, 5 };
+        int iteratLevel[] = { 15, 5, 3 };
         double lambdas[] = { 0.0002, 0.0002, 0.0002 };
         double threshold[] = { 80, 160, 160 };
 
         for (int l = 2; l >= 0; l--) {
             if(l != 2){
                 actualPoseVector6D = bestPoseVector6D;
+            }
+            else{
+                actualPoseVector6D.setZero(6);
             }
             int level = pow(2, l);
             int rows = refGray.rows/level;
@@ -516,7 +523,9 @@ public:
             cerr << "Iniciando de:" << endl;
             cerr << getPoseExponentialMap2(actualPoseVector6D);
             bool minimized = true;
-
+            double m = 1;
+            double a = 2;
+            double b = 10;
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
@@ -524,7 +533,17 @@ public:
                                              tempActGray, tempActDepth,
                                              pyrWNormals[l], residuals, jacobians, l);
 
-                minimized = doSingleIteration(residuals, jacobians, lambdas[l], threshold[l]);
+                minimized = doSingleIteration(residuals, jacobians, m*lambdas[l], threshold[l]);
+                if (!minimized){
+                    m *= 1/a;
+                    cerr << m*lambdas[l] << endl;
+                    actualPoseVector6D = bestPoseVector6D;
+                }
+                else{
+                    m *= b;
+                    cerr << m*lambdas[l] << endl;
+                }
+
             }
         }
         if (refinement){
