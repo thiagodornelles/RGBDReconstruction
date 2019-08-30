@@ -85,8 +85,8 @@ int main(int argc, char *argv[]){
 
     ScalableTSDFVolume tsdf(1.f/depthScale, 0.005, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/Users/thiago/Datasets/kinectdata/";
-//    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
+//    string datasetFolder = "/Users/thiago/Datasets/kinectdata/";
+    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
 
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
@@ -96,7 +96,7 @@ int main(int argc, char *argv[]){
     shared_ptr<PointCloudExtended> pcdVisualizer = std::make_shared<PointCloudExtended>();
     shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
 
-    int step = 1;
+    int step = 4;
     VectorXd lastPose;
     bool lastValid = true;
     lastPose.setZero(6);
@@ -138,7 +138,7 @@ int main(int argc, char *argv[]){
 //        threshold(depth1, depth1, 1000, 65535, THRESH_TOZERO_INV);
         cv_extend::bilateralFilter(gray1, gray1, 5, 3);
         cv_extend::bilateralFilter(gray2, gray2, 5, 3);
-        cv_extend::bilateralFilter(depth1, depth1, 5, 3);
+        cv_extend::bilateralFilter(depth1, depth1, 3, 3);
 //        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(5, 5)));
 //        erode(depth2, depth2, getStructuringElement(MORPH_CROSS, Size(3, 3)));
 
@@ -182,8 +182,8 @@ int main(int argc, char *argv[]){
         prevTransf = transf;
 
 //        t = aligner.getMatrixRtFromPose6D(aligner.getPose6D()).inverse();
-        t = aligner.getPoseExponentialMap2(aligner.getPose6D()).inverse();
-        transf = transf * t;
+//        t = aligner.getPoseExponentialMap2(aligner.getPose6D()).inverse();
+//        transf = transf * t;
 
         Vector3d translation(transf(0,3), transf(1,3), transf(2,3));
 
@@ -202,26 +202,6 @@ int main(int argc, char *argv[]){
         totalTransl += transl;
         voxelDSAngle += angle;
 
-//        if (i != initFrame){
-//            shared_ptr<PointCloud> pcdDown = VoxelDownSample(*pcd, 0.005);
-//            shared_ptr<PointCloud> modelDown = VoxelDownSample(*tsdf.ExtractPointCloud(), 0.005);
-//            shared_ptr<PointCloud> modelDown = VoxelDownSample(*pcdExtended, 0.05);
-//            std::shared_ptr<registration::Feature> source_fpfh, target_fpfh;
-//            EstimateNormals(*pcdDown, open3d::geometry::KDTreeSearchParamKNN());
-//            EstimateNormals(*modelDown, open3d::geometry::KDTreeSearchParamKNN());
-//            source_fpfh = registration::ComputeFPFHFeature(
-//                        *pcdDown, open3d::geometry::KDTreeSearchParamKNN());
-//            target_fpfh = registration::ComputeFPFHFeature(
-//                        *modelDown, open3d::geometry::KDTreeSearchParamKNN());
-
-//            auto fastGlobal = registration::FastGlobalRegistration(*pcdDown, *modelDown,
-//                                                                   *source_fpfh, *target_fpfh);
-//            cerr << "initial" << endl;
-//            pcd->Transform(fastGlobal.transformation_.inverse());
-//            t = fastGlobal.transformation_.inverse();
-//            cerr << t << endl;
-//        }
-
         if (!generateMesh){
             pcd->Transform(transf);
             auto start = high_resolution_clock::now();
@@ -235,18 +215,17 @@ int main(int argc, char *argv[]){
         //************ ALIGNMENT ************//
         auto start = high_resolution_clock::now();
         std::pair<VectorXd, bool> result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
-//        VectorXd pose = result.first;
-//        lastValid = result.second;
-//        if(!result.second){
-//            cerr << "Bad aligment, skip this" << endl;
-////            waitKey(2000);
-//        }
+        VectorXd pose = result.first;
+        lastValid = result.second;
+        if(!result.second){
+            cerr << "Bad aligment, skip this" << endl;
+//            waitKey(2000);
+        }
         auto stop = high_resolution_clock::now();                
 //        cerr << "Obtida transf:\n" << aligner.getPoseExponentialMap2(pose).inverse() << endl;
 
         t = aligner.getPoseExponentialMap2(aligner.getPose6D()).inverse();
         transf = transf * t;
-
         if (generateMesh){
             tsdf.Integrate(*rgbdImage, intrinsics, transf.inverse());            
         }
@@ -258,7 +237,7 @@ int main(int argc, char *argv[]){
         cerr << "TRANSLATION: " << totalTransl << endl;
         cerr << "ANGLE: " << totalAngle << endl;
 
-        char key = waitKey(1000);
+        char key = waitKey(100);
         if(key == '1') imwrite("teste.png", depthOut);
         if(i == finalFrame || key == 'z'){
             Visualizer vis;
