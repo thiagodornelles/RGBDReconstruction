@@ -234,12 +234,12 @@ public:
                 jacobianProj(0,2) = -(fx*trfPoint3D(0))*invTransfZ*invTransfZ;
                 jacobianProj(1,2) = -(fy*trfPoint3D(1))*invTransfZ*invTransfZ;
 
-//                jacobianRt_z(0,0) = jacobianRt(2,0);
-//                jacobianRt_z(0,1) = jacobianRt(2,1);
-//                jacobianRt_z(0,2) = jacobianRt(2,2);
-//                jacobianRt_z(0,3) = jacobianRt(2,3);
-//                jacobianRt_z(0,4) = jacobianRt(2,4);
-//                jacobianRt_z(0,5) = jacobianRt(2,5);
+                //                jacobianRt_z(0,0) = jacobianRt(2,0);
+                //                jacobianRt_z(0,1) = jacobianRt(2,1);
+                //                jacobianRt_z(0,2) = jacobianRt(2,2);
+                //                jacobianRt_z(0,3) = jacobianRt(2,3);
+                //                jacobianRt_z(0,4) = jacobianRt(2,4);
+                //                jacobianRt_z(0,5) = jacobianRt(2,5);
 
                 double nx = (*normalMap.ptr<Vec3d>(y, x))[0];
                 double ny = (*normalMap.ptr<Vec3d>(y, x))[1];
@@ -255,7 +255,7 @@ public:
                 jacobianDepth(4) = w2;
                 jacobianDepth(5) = w3;
 
-//                jacobianDepth = gradPixDepth * jacobianProj * jacobianRt - jacobianRt_z;
+                //                jacobianDepth = gradPixDepth * jacobianProj * jacobianRt - jacobianRt_z;
                 jacobianIntensity = gradPixIntensity * jacobianProj * jacobianRt;
 
                 //******* BEGIN Projection of PointCloud on the image plane ********
@@ -278,16 +278,16 @@ public:
 
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
-//                    dInt = abs(dInt) > 0.3 ? 0 : dInt;
+                    //                    dInt = abs(dInt) > 0.3 ? 0 : dInt;
                     double dDep = pixDep2 - pixDep1;
                     dDep = pixDep1 == 0 ? 0 : dDep;
                     dDep = pixDep2 * dDep == 0 ? 0 : dDep;
                     double diff = abs(dDep);
-                    dDep = diff > 0.0008 ? 0 : dDep;
+                    dDep = diff > 0.0005 ? 0 : dDep;
                     double wDep = *weight.ptr<double>(transfR_int, transfC_int);
-                    //double maxCurv = 0.5;
-                    //double minCurv = 0.2;
-                    //wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
+                    //                    double maxCurv = 0.5;
+                    //                    double minCurv = 0.2;
+                    //                    wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
 
                     jacobians(i,0)   = wDep * jacobianDepth(0,0);
                     jacobians(i,1)   = wDep * jacobianDepth(0,1);
@@ -356,7 +356,7 @@ public:
                 -pitch,   yaw,    0.f,   z,
                 0.f,   0.f,    0.f, 0.f;
 
-        lie = lie.exp();        
+        lie = lie.exp();
         return lie;
     }
 
@@ -460,12 +460,12 @@ public:
     bool doSingleIteration(MatrixXd &residuals, MatrixXd &jacobians,
                            double lambda, double threshold){
 
-        //        double chi = residuals.squaredNorm();
-        //        cerr << "chi squared " << chi << endl;
-        //        if(chi > 10){
-        //            cerr << "Escalando o erro " << endl;
-        //            residuals *= sqrt(10.f/chi);
-        //        }
+        double chi = residuals.squaredNorm();
+        cerr << "chi squared " << chi << endl;
+        if(chi > 10){
+            cerr << "Escalando o erro " << endl;
+            residuals *= sqrt(10.f/chi);
+        }
 
         MatrixXd gradients = jacobians.transpose() * residuals;
         MatrixXd hessian = jacobians.transpose() * jacobians;
@@ -509,7 +509,7 @@ public:
         Mat tempRefGray, tempActGray;
         Mat tempRefDepth, tempActDepth;
 
-        int iteratLevel[] = { 10, 5, 3 };
+        int iteratLevel[] = { 10, 5, 5 };
         double lambdas[] = { 0.0002, 0.0002, 0.0002 };
         double threshold[] = { 80, 160, 160 };
 
@@ -536,7 +536,7 @@ public:
             bool minimized = true;
             double m = 1;
             double a = 1.1;
-            double b = 1.5;
+            double b = 1.1;
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
@@ -570,12 +570,12 @@ public:
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
                                              pyrWNormals[0], normalMap,
-                                             residuals, jacobians, 0, false, true);
+                        residuals, jacobians, 0, false, true);
                 minimized = doSingleIteration(residuals, jacobians, m*lambdas[0], threshold[0]);
                 if (!minimized){
                     m *= 1/a;
                     cerr << m*lambdas[0] << endl;
-//                    actualPoseVector6D = bestPoseVector6D;
+                    //                    actualPoseVector6D = bestPoseVector6D;
                 }
                 else{
                     m *= b;

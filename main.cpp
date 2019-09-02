@@ -85,8 +85,9 @@ int main(int argc, char *argv[]){
 
     ScalableTSDFVolume tsdf(1.f/depthScale, 0.005, TSDFVolumeColorType::RGB8);
 
-//    string datasetFolder = "/Users/thiago/Datasets/kinectdata/";
-    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
+//    string datasetFolder = "/Users/thiago/Datasets/gabrielaGAP/";
+    string datasetFolder = "/Users/thiago/Datasets/kinectdata/";
+//    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
 
     vector<string> depthFiles, rgbFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
@@ -96,7 +97,7 @@ int main(int argc, char *argv[]){
     shared_ptr<PointCloudExtended> pcdVisualizer = std::make_shared<PointCloudExtended>();
     shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
 
-    int step = 4;
+    int step = 1;
     VectorXd lastPose;
     bool lastValid = true;
     lastPose.setZero(6);
@@ -133,14 +134,13 @@ int main(int argc, char *argv[]){
         Mat gray2;
         cvtColor(rgb1, gray1, CV_BGR2GRAY);
         cvtColor(rgb2, gray2, CV_BGR2GRAY);        
-//        GaussianBlur(gray1, gray1, Size(3,3), 1);
-//        GaussianBlur(gray2, gray2, Size(3,3), 1);
 //        threshold(depth1, depth1, 1000, 65535, THRESH_TOZERO_INV);
         cv_extend::bilateralFilter(gray1, gray1, 5, 3);
         cv_extend::bilateralFilter(gray2, gray2, 5, 3);
-        cv_extend::bilateralFilter(depth1, depth1, 3, 3);
-//        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(5, 5)));
-//        erode(depth2, depth2, getStructuringElement(MORPH_CROSS, Size(3, 3)));
+        cv_extend::bilateralFilter(depth1, depth1, 5, 3);
+        cv_extend::bilateralFilter(depth2, depth2, 5, 3);
+        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(5, 5)));
+//        erode(depth2, depth2, getStructuringElement(MORPH_RECT, Size(5, 5)));
 
         Mat grayOut, depthOut;
         hconcat(gray1, gray2, grayOut);

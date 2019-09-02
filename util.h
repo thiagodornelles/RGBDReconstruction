@@ -501,7 +501,7 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
     }
 
     //Point removal
-//    removeUnstablePoints(model);
+    //removeUnstablePoints(model);
 
     Mat depth1, depth2;
     Mat modelIdx, lastFrameIdx;
@@ -533,9 +533,9 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
 
             ushort depth = *depth2.ptr<ushort>(r, c);
             double newRadius = depth;
-//            if(modIdx >= 0 && model->confidence_[modIdx] > 30){
-//                continue;
-//            }
+            if(modIdx >= 0 && model->confidence_[modIdx] > 10){
+                continue;
+            }
             //Two points are into a line of sight from camera
             if(lastIdx >= 0 && modIdx >= 0){                
                 Eigen::Vector3d modelPoint = model->points_[modIdx];
