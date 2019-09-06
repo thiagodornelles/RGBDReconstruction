@@ -97,8 +97,8 @@ public:
 
         Scharr(actIntImage, actIntDerivX, CV_64F, 1, 0, intScales[level], 0.0, cv::BORDER_DEFAULT);
         Scharr(actIntImage, actIntDerivY, CV_64F, 0, 1, intScales[level], 0.0, cv::BORDER_DEFAULT);
-        Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, depScales[level], 0.0, cv::BORDER_DEFAULT);
-        Scharr(actDepImage, actDepDerivY, CV_64F, 0, 1, depScales[level], 0.0, cv::BORDER_DEFAULT);
+//        Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, depScales[level], 0.0, cv::BORDER_DEFAULT);
+//        Scharr(actDepImage, actDepDerivY, CV_64F, 0, 1, depScales[level], 0.0, cv::BORDER_DEFAULT);
         //        Sobel(actIntImage, actIntDerivX, CV_64F, 1, 0, 3, intScales[level], 0.0, cv::BORDER_DEFAULT);
         //        Sobel(actIntImage, actIntDerivY, CV_64F, 0, 1, 3, intScales[level], 0.0, cv::BORDER_DEFAULT);
         //        Sobel(actDepImage, actDepDerivX, CV_64F, 1, 0, 3, depScales[level], 0.0, cv::BORDER_DEFAULT);
@@ -153,12 +153,13 @@ public:
 
                 gradPixIntensity(0,0) = *actIntDerivX.ptr<double>(y, x);
                 gradPixIntensity(0,1) = *actIntDerivY.ptr<double>(y, x);
-                gradPixDepth(0,0) = *actDepDerivX.ptr<double>(y, x);
-                gradPixDepth(0,1) = *actDepDerivY.ptr<double>(y, x);
+//                gradPixDepth(0,0) = *actDepDerivX.ptr<double>(y, x);
+//                gradPixDepth(0,1) = *actDepDerivY.ptr<double>(y, x);
 
-                double wInt = gradPixIntensity(0,0) * gradPixIntensity(0,0);
-                wInt += gradPixIntensity(0,1) * gradPixIntensity(0,1);
-                wInt = sqrt(wInt);
+//                double wInt = gradPixIntensity(0,0) * gradPixIntensity(0,0);
+//                wInt += gradPixIntensity(0,1) * gradPixIntensity(0,1);
+//                wInt = sqrt(wInt);
+                double wInt = 1;
 
                 //******* BEGIN Unprojection of DepthMap ********
                 Vector4d refPoint3D;
@@ -283,7 +284,8 @@ public:
                     dDep = pixDep1 == 0 ? 0 : dDep;
                     dDep = pixDep2 * dDep == 0 ? 0 : dDep;
                     double diff = abs(dDep);
-                    dDep = diff > 0.0005 ? 0 : dDep;
+//                    dDep = diff > 0.0005 ? 0 : dDep;
+                    dDep = diff > 0.003 ? 0 : dDep;
                     double wDep = *weight.ptr<double>(transfR_int, transfC_int);
                     //                    double maxCurv = 0.5;
                     //                    double minCurv = 0.2;
@@ -460,12 +462,13 @@ public:
     bool doSingleIteration(MatrixXd &residuals, MatrixXd &jacobians,
                            double lambda, double threshold){
 
-        double chi = residuals.squaredNorm();
-        cerr << "chi squared " << chi << endl;
-        if(chi > 10){
-            cerr << "Escalando o erro " << endl;
-            residuals *= sqrt(10.f/chi);
-        }
+//        double chi = residuals.squaredNorm();
+//        cerr << "chi squared " << chi << endl;
+//        double thresh = 0.01;
+//        if(chi > thresh){
+//            cerr << "Escalando o erro " << endl;
+//            residuals *= sqrt(5/chi);
+//        }
 
         MatrixXd gradients = jacobians.transpose() * residuals;
         MatrixXd hessian = jacobians.transpose() * jacobians;
@@ -509,16 +512,15 @@ public:
         Mat tempRefGray, tempActGray;
         Mat tempRefDepth, tempActDepth;
 
-        int iteratLevel[] = { 10, 5, 5 };
+        int iteratLevel[] = { 10, 5, 3 };
         double lambdas[] = { 0.0002, 0.0002, 0.0002 };
-        double threshold[] = { 80, 160, 160 };
-
+        double threshold[] = { 80, 160, 160 };        
         for (int l = 2; l >= 0; l--) {
-            if(l != 2){
-                actualPoseVector6D = bestPoseVector6D;
+            if(l == 2){
+                actualPoseVector6D.setZero(6);
             }
             else{
-                actualPoseVector6D.setZero(6);
+                actualPoseVector6D = bestPoseVector6D;
             }
             int level = pow(2, l);
             int rows = refGray.rows/level;
@@ -535,8 +537,8 @@ public:
             cerr << getPoseExponentialMap2(actualPoseVector6D);
             bool minimized = true;
             double m = 1;
-            double a = 1.1;
-            double b = 1.1;
+            double a = 1.5;
+            double b = 1.5;
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
@@ -547,12 +549,12 @@ public:
                 minimized = doSingleIteration(residuals, jacobians, m*lambdas[l], threshold[l]);
                 if (!minimized){
                     m *= 1/a;
-                    cerr << m*lambdas[l] << endl;
+//                    cerr << m*lambdas[l] << endl;
                     actualPoseVector6D = bestPoseVector6D;
                 }
                 else{
                     m *= b;
-                    cerr << "minimized " << m*lambdas[l] << endl;
+//                    cerr << "minimized " << m*lambdas[l] << endl;
                 }
             }
         }
@@ -562,7 +564,7 @@ public:
             int cols = refGray.cols;
             bool minimized = false;
             double m = 1;
-            double a = 1.1;
+            double a = 1.5;
             double b = 1.5;
             for (int i = 0; i < 5; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
@@ -575,11 +577,11 @@ public:
                 if (!minimized){
                     m *= 1/a;
                     cerr << m*lambdas[0] << endl;
-                    //                    actualPoseVector6D = bestPoseVector6D;
+                    actualPoseVector6D = bestPoseVector6D;
                 }
                 else{
                     m *= b;
-                    cerr << "minimized " << m*lambdas[0] << endl;
+//                    cerr << "minimized " << m*lambdas[0] << endl;
                 }
             }
         }

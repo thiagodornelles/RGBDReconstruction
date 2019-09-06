@@ -40,19 +40,22 @@ int main(int argc, char *argv[]){
 
     int initFrame = 0;
     int finalFrame = 1000;
+    int step = 1;
 
     if(argc > 1){
         string genMesh = argv[1];
         if(genMesh == "mesh"){
             generateMesh = true;
-            if(argc == 4){
+            if(argc == 5){
                 initFrame = atoi(argv[2]);
                 finalFrame = atoi(argv[3]);
+                step = atoi(argv[4]);
             }
         }
         else{
             initFrame = atoi(argv[1]);
             finalFrame = atoi(argv[2]);
+            step = atoi(argv[3]);
         }
     }
 
@@ -69,7 +72,10 @@ int main(int argc, char *argv[]){
 
     //Kinect 360 unprojection
     //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 589.322232303107740, 589.849429472609130, 321.140896612950880, 235.563195335248370);
-    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
+    //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
+    //InHand Dataset
+    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 474.31524658203125, 474.31524658203125,
+                                                               317.4243469238281, 244.9296875);
     //Mickey Dataset
     //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
     //CORBS
@@ -77,37 +83,43 @@ int main(int argc, char *argv[]){
     //Kinect v2
     //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(512, 424, 363.491, 363.491, 256.496, 207.778);
 
-    double depthScale = 5000;
-    double maxDistProjection = 0.3;
+    double depthScale = 8000;
+    double maxDistProjection = 1;
     Aligner aligner(intrinsics);
-    aligner.setDist(0.1, 0.3);
+    aligner.setDist(0.1, 1);
     aligner.depthScale = depthScale;
 
-    ScalableTSDFVolume tsdf(1.f/depthScale, 0.005, TSDFVolumeColorType::RGB8);
+    //0.000125
+//    ScalableTSDFVolume tsdf(1.f/depthScale, 0.005, TSDFVolumeColorType::RGB8);
+    ScalableTSDFVolume tsdf(1.f/depthScale*2, 0.005, TSDFVolumeColorType::RGB8);
 
 //    string datasetFolder = "/Users/thiago/Datasets/gabrielaGAP/";
-    string datasetFolder = "/Users/thiago/Datasets/kinectdata/";
-//    string datasetFolder = "/media/thiago/BigStorage/kinectdata/";
+//    string datasetFolder = "/Users/thiago/Datasets/kinectdata/";
+    string datasetFolder = "/media/thiago/BigStorage/rgb-d dataset/cheezit/";
+//    string datasetFolder = "/media/thiago/BigStorage/thiago/";
 
     vector<string> depthFiles, rgbFiles;
-    readFilenames(depthFiles, datasetFolder + "depth/");
-    readFilenames(rgbFiles, datasetFolder + "rgb/");
+    readFilenames(depthFiles, datasetFolder + "depthMask/");
+    readFilenames(rgbFiles, datasetFolder + "colorMask/");
 
     shared_ptr<PointCloudExtended> pcdExtended = std::make_shared<PointCloudExtended>();
-    shared_ptr<PointCloudExtended> pcdVisualizer = std::make_shared<PointCloudExtended>();
+//    shared_ptr<PointCloudExtended> pcdVisualizer = std::make_shared<PointCloudExtended>();
     shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
 
-    int step = 1;
     VectorXd lastPose;
     bool lastValid = true;
     lastPose.setZero(6);
+    Matrix4d prevTransf;
+    Matrix3d prevRotation;
+    Matrix3d rotation;
+
     for (int i = initFrame; i < depthFiles.size()-1; i+=step) {
         int i1 = i;
         int i2 = i1 + step;
-        string depthPath1 = datasetFolder + "depth/" + depthFiles[i1];
-        string rgbPath1 = datasetFolder + "rgb/" + rgbFiles[i1];
-        string depthPath2 = datasetFolder + "depth/" + depthFiles[i2];
-        string rgbPath2 = datasetFolder + "rgb/" + rgbFiles[i2];
+        string depthPath1 = datasetFolder + "depthMask/" + depthFiles[i1];
+        string rgbPath1 = datasetFolder + "colorMask/" + rgbFiles[i1];
+        string depthPath2 = datasetFolder + "depthMask/" + depthFiles[i2];
+        string rgbPath2 = datasetFolder + "colorMask/" + rgbFiles[i2];
         Mat rgb1 = imread(rgbPath1);
         Mat rgb2 = imread(rgbPath2);
         Mat depth2, depth1;
@@ -137,8 +149,8 @@ int main(int argc, char *argv[]){
 //        threshold(depth1, depth1, 1000, 65535, THRESH_TOZERO_INV);
         cv_extend::bilateralFilter(gray1, gray1, 5, 3);
         cv_extend::bilateralFilter(gray2, gray2, 5, 3);
-        cv_extend::bilateralFilter(depth1, depth1, 5, 3);
-        cv_extend::bilateralFilter(depth2, depth2, 5, 3);
+        cv_extend::bilateralFilter(depth1, depth1, 3, 2);
+//        cv_extend::bilateralFilter(depth2, depth2, 3, 3);
         erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(5, 5)));
 //        erode(depth2, depth2, getStructuringElement(MORPH_RECT, Size(5, 5)));
 
@@ -171,23 +183,14 @@ int main(int argc, char *argv[]){
 
         shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, intrinsics, initCam);
 
-        Vector3d prevTranslation(transf(0,3), transf(1,3), transf(2,3));
+        Vector3d prevTranslation(prevTransf(0,3), prevTransf(1,3), prevTransf(2,3));
 
-        Matrix3d prevRotation;
-        prevRotation << transf(0,0) , transf(0,1), transf(0,2),
-                transf(1,0) , transf(1,1), transf(1,2),
-                transf(2,0) , transf(2,1), transf(2,2);
-
-        Matrix4d prevTransf;
-        prevTransf = transf;
-
-//        t = aligner.getMatrixRtFromPose6D(aligner.getPose6D()).inverse();
-//        t = aligner.getPoseExponentialMap2(aligner.getPose6D()).inverse();
-//        transf = transf * t;
+        prevRotation << prevTransf(0,0) , prevTransf(0,1), prevTransf(0,2),
+                prevTransf(1,0) , prevTransf(1,1), prevTransf(1,2),
+                prevTransf(2,0) , prevTransf(2,1), prevTransf(2,2);
 
         Vector3d translation(transf(0,3), transf(1,3), transf(2,3));
 
-        Matrix3d rotation;
         rotation << transf(0,0) , transf(0,1), transf(0,2),
                 transf(1,0) , transf(1,1), transf(1,2),
                 transf(2,0) , transf(2,1), transf(2,2);
@@ -216,15 +219,12 @@ int main(int argc, char *argv[]){
         auto start = high_resolution_clock::now();
         std::pair<VectorXd, bool> result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
         VectorXd pose = result.first;
-        lastValid = result.second;
-        if(!result.second){
-            cerr << "Bad aligment, skip this" << endl;
-//            waitKey(2000);
-        }
+        lastValid = result.second;        
         auto stop = high_resolution_clock::now();                
-//        cerr << "Obtida transf:\n" << aligner.getPoseExponentialMap2(pose).inverse() << endl;
+        cerr << "Obtida transf:\n" << aligner.getPoseExponentialMap2(pose).inverse() << endl;
 
         t = aligner.getPoseExponentialMap2(aligner.getPose6D()).inverse();
+        prevTransf = transf;
         transf = transf * t;
         if (generateMesh){
             tsdf.Integrate(*rgbdImage, intrinsics, transf.inverse());            
