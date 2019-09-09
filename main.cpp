@@ -70,40 +70,42 @@ int main(int argc, char *argv[]){
 
     Eigen::Matrix4d initCam = Eigen::Matrix4d::Identity();
 
+    //Siemens Dataset
+    PinholeCameraIntrinsic intrinsics =
+            PinholeCameraIntrinsic(640, 480, 538.925221, 538.925221, 316.473843, 243.262082);
     //Kinect 360 unprojection
     //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 589.322232303107740, 589.849429472609130, 321.140896612950880, 235.563195335248370);
-    //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
+//    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
     //InHand Dataset
-    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 474.31524658203125, 474.31524658203125,
-                                                               317.4243469238281, 244.9296875);
+//    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 474.31524658203125, 474.31524658203125, 317.4243469238281, 244.9296875);
     //Mickey Dataset
-    //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
+//    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
     //CORBS
     //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 468.60, 468.61, 318.27, 243.99);
     //Kinect v2
     //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(512, 424, 363.491, 363.491, 256.496, 207.778);
 
-    double depthScale = 8000;
-    double maxDistProjection = 1;
+    double depthScale = 5000;
+    double maxDistProjection = 2;
     Aligner aligner(intrinsics);
-    aligner.setDist(0.1, 1);
+    aligner.setDist(0.1, 2);
     aligner.depthScale = depthScale;
 
     //0.000125
-//    ScalableTSDFVolume tsdf(1.f/depthScale, 0.005, TSDFVolumeColorType::RGB8);
-    ScalableTSDFVolume tsdf(1.f/depthScale*2, 0.005, TSDFVolumeColorType::RGB8);
+    ScalableTSDFVolume tsdf(1.f/depthScale, 0.001, TSDFVolumeColorType::RGB8);
+//    ScalableTSDFVolume tsdf(1.f/depthScale*2, 0.005, TSDFVolumeColorType::RGB8);
 
-//    string datasetFolder = "/Users/thiago/Datasets/gabrielaGAP/";
-//    string datasetFolder = "/Users/thiago/Datasets/kinectdata/";
-    string datasetFolder = "/media/thiago/BigStorage/rgb-d dataset/cheezit/";
+    string datasetFolder = "/Users/thiago/Datasets/kenny_turntable/";
+//    string datasetFolder = "/Users/thiago/Datasets/mickey/";
+//    string datasetFolder = "/media/thiago/BigStorage/rgb-d dataset/cheezit/";
 //    string datasetFolder = "/media/thiago/BigStorage/thiago/";
 
-    vector<string> depthFiles, rgbFiles;
-    readFilenames(depthFiles, datasetFolder + "depthMask/");
-    readFilenames(rgbFiles, datasetFolder + "colorMask/");
+    vector<string> depthFiles, rgbFiles, maskFiles;
+    readFilenames(depthFiles, datasetFolder + "depth/");
+    readFilenames(rgbFiles, datasetFolder + "rgb/");
+    readFilenames(maskFiles, datasetFolder + "mask/");
 
     shared_ptr<PointCloudExtended> pcdExtended = std::make_shared<PointCloudExtended>();
-//    shared_ptr<PointCloudExtended> pcdVisualizer = std::make_shared<PointCloudExtended>();
     shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
 
     VectorXd lastPose;
@@ -116,17 +118,25 @@ int main(int argc, char *argv[]){
     for (int i = initFrame; i < depthFiles.size()-1; i+=step) {
         int i1 = i;
         int i2 = i1 + step;
-        string depthPath1 = datasetFolder + "depthMask/" + depthFiles[i1];
-        string rgbPath1 = datasetFolder + "colorMask/" + rgbFiles[i1];
-        string depthPath2 = datasetFolder + "depthMask/" + depthFiles[i2];
-        string rgbPath2 = datasetFolder + "colorMask/" + rgbFiles[i2];
+        string depthPath1 = datasetFolder + "depth/" + depthFiles[i1];
+        string rgbPath1 = datasetFolder + "rgb/" + rgbFiles[i1];
+        string depthPath2 = datasetFolder + "depth/" + depthFiles[i2];
+        string rgbPath2 = datasetFolder + "rgb/" + rgbFiles[i2];
+        string maskPath1 = datasetFolder + "mask/" + maskFiles[i1];
+        string maskPath2 = datasetFolder + "mask/" + maskFiles[i2];
+        cerr << depthPath1 << endl;
         Mat rgb1 = imread(rgbPath1);
         Mat rgb2 = imread(rgbPath2);
+        Mat mask1 = imread(maskPath1);
+        Mat mask2 = imread(maskPath2);
+//        bitwise_and(rgb1, mask1, rgb1);
+//        bitwise_and(rgb2, mask2, rgb2);
         Mat depth2, depth1;
         Mat index2;
         if (i == initFrame){
             depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
+//            depth2 = applyMaskDepth(depth2, mask2);
         }
         else{
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
@@ -141,17 +151,19 @@ int main(int argc, char *argv[]){
             }
 //            imshow("index", index2);
 //            imshow("projection", depth2 * 10);
-        }        
+        }
+//        depth1 = applyMaskDepth(depth1, mask1);
+
         Mat gray1;
         Mat gray2;
         cvtColor(rgb1, gray1, CV_BGR2GRAY);
         cvtColor(rgb2, gray2, CV_BGR2GRAY);        
-//        threshold(depth1, depth1, 1000, 65535, THRESH_TOZERO_INV);
+//        threshold(depth1, depth1, 1300, 65535, THRESH_TOZERO_INV);
         cv_extend::bilateralFilter(gray1, gray1, 5, 3);
         cv_extend::bilateralFilter(gray2, gray2, 5, 3);
-        cv_extend::bilateralFilter(depth1, depth1, 3, 2);
+//        cv_extend::bilateralFilter(depth1, depth1, 3, 2);
 //        cv_extend::bilateralFilter(depth2, depth2, 3, 3);
-        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(5, 5)));
+//        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(5, 5)));
 //        erode(depth2, depth2, getStructuringElement(MORPH_RECT, Size(5, 5)));
 
         Mat grayOut, depthOut;

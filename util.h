@@ -299,7 +299,7 @@ void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
         Eigen::Vector4d refPoint3d;
         refPoint3d(0) = pcdPoint(0);
         refPoint3d(1) = pcdPoint(1);
-        refPoint3d(2) = pcdPoint(2);
+        refPoint3d(2) = pcdPoint(2);        
         refPoint3d(3) = 1;
         refPoint3d = Rt * refPoint3d;
         double invTransfZ = 1.0 / refPoint3d(2);
@@ -354,7 +354,8 @@ void projectPointCloud(PointCloud pointCloud, double maxDist, double depthScale,
         Eigen::Vector4d refPoint3d;
         refPoint3d(0) = pcdPoint(0);
         refPoint3d(1) = pcdPoint(1);
-        refPoint3d(2) = pcdPoint(2);
+        refPoint3d(2) = pcdPoint(2);        
+        if(refPoint3d(2) > maxDist) continue;
         refPoint3d(3) = 1;
         refPoint3d = Rt * refPoint3d;
         double invTransfZ = 1.0 / refPoint3d(2);
@@ -591,4 +592,21 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
     //    cerr << "Total points " << model->points_.size() << endl;
     return (addInFrontOf + 1.0)/(model->points_.size()+1.0);
 }
+
+Mat applyMaskDepth(Mat depthMap, Mat maskMap){
+    Mat depthClean(depthMap.rows, depthMap.cols, CV_16UC1);
+    for (int r = 0; r < depthMap.rows; ++r) {
+        for (int c = 0; c < depthMap.cols; ++c) {
+            ushort mask = *maskMap.ptr<ushort>(r, c);
+            if(mask > 0){
+                *depthClean.ptr<ushort>(r, c) = *depthMap.ptr<ushort>(r, c);
+            }
+            else{
+                *depthClean.ptr<ushort>(r, c) = 0;
+            }
+        }
+    }
+    return depthClean;
+}
+
 #endif
