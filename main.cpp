@@ -85,25 +85,30 @@ int main(int argc, char *argv[]){
     //Kinect v2
     //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(512, 424, 363.491, 363.491, 256.496, 207.778);
 
-    double depthScale = 5000;
+    double depthScale = 2000;
     double maxDistProjection = 2;
     Aligner aligner(intrinsics);
-    aligner.setDist(0.1, 2);
+    aligner.setDist(0.01, 2);
     aligner.depthScale = depthScale;
 
     //0.000125
-    ScalableTSDFVolume tsdf(1.f/depthScale, 0.001, TSDFVolumeColorType::RGB8);
+    ScalableTSDFVolume tsdf(1.f/depthScale, 0.01, TSDFVolumeColorType::RGB8);
 //    ScalableTSDFVolume tsdf(1.f/depthScale*2, 0.005, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/Users/thiago/Datasets/kenny_turntable/";
+    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Kenny_Turntable/";
 //    string datasetFolder = "/Users/thiago/Datasets/mickey/";
 //    string datasetFolder = "/media/thiago/BigStorage/rgb-d dataset/cheezit/";
 //    string datasetFolder = "/media/thiago/BigStorage/thiago/";
 
-    vector<string> depthFiles, rgbFiles, maskFiles;
+    //Output file with poses
+    ofstream posesFile;
+    posesFile.open(datasetFolder + "poses.txt");
+
+    vector<string> depthFiles, rgbFiles, omaskFiles, tmaskFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
     readFilenames(rgbFiles, datasetFolder + "rgb/");
-    readFilenames(maskFiles, datasetFolder + "mask/");
+    readFilenames(omaskFiles, datasetFolder + "omask/");
+    readFilenames(tmaskFiles, datasetFolder + "tmask/");
 
     shared_ptr<PointCloudExtended> pcdExtended = std::make_shared<PointCloudExtended>();
     shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
@@ -111,32 +116,44 @@ int main(int argc, char *argv[]){
     VectorXd lastPose;
     bool lastValid = true;
     lastPose.setZero(6);
-    Matrix4d prevTransf;
+    Matrix4d prevTransf = transf;
     Matrix3d prevRotation;
     Matrix3d rotation;
 
     for (int i = initFrame; i < depthFiles.size()-1; i+=step) {
         int i1 = i;
         int i2 = i1 + step;
+
+        posesFile << i1 << endl;
+        posesFile << transf << endl;
+
         string depthPath1 = datasetFolder + "depth/" + depthFiles[i1];
-        string rgbPath1 = datasetFolder + "rgb/" + rgbFiles[i1];
         string depthPath2 = datasetFolder + "depth/" + depthFiles[i2];
+        string rgbPath1 = datasetFolder + "rgb/" + rgbFiles[i1];
         string rgbPath2 = datasetFolder + "rgb/" + rgbFiles[i2];
-        string maskPath1 = datasetFolder + "mask/" + maskFiles[i1];
-        string maskPath2 = datasetFolder + "mask/" + maskFiles[i2];
-        cerr << depthPath1 << endl;
+        string omaskPath1 = datasetFolder + "omask/" + omaskFiles[i1];
+        string omaskPath2 = datasetFolder + "omask/" + omaskFiles[i2];
+        string tmaskPath1 = datasetFolder + "tmask/" + tmaskFiles[i1];
+        string tmaskPath2 = datasetFolder + "tmask/" + tmaskFiles[i2];
+        cerr << rgbPath1 << endl;
+        cerr << rgbPath2 << endl;
         Mat rgb1 = imread(rgbPath1);
         Mat rgb2 = imread(rgbPath2);
-        Mat mask1 = imread(maskPath1);
-        Mat mask2 = imread(maskPath2);
-//        bitwise_and(rgb1, mask1, rgb1);
-//        bitwise_and(rgb2, mask2, rgb2);
+        Mat omask1 = imread(omaskPath1);
+        Mat omask2 = imread(omaskPath2);
+        Mat tmask1 = imread(tmaskPath1);
+        Mat tmask2 = imread(tmaskPath2);
+        Mat mask1 = omask1 + tmask1;
+        Mat mask2 = omask2 + tmask2;
+//        imshow("mask", mask1);
+        bitwise_and(rgb1, mask1, rgb1);
+        bitwise_and(rgb2, mask2, rgb2);
         Mat depth2, depth1;
         Mat index2;
         if (i == initFrame){
-            depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
-//            depth2 = applyMaskDepth(depth2, mask2);
+            depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);            
+            depth2 = applyMaskDepth(depth2, mask2);
         }
         else{
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
@@ -152,17 +169,16 @@ int main(int argc, char *argv[]){
 //            imshow("index", index2);
 //            imshow("projection", depth2 * 10);
         }
-//        depth1 = applyMaskDepth(depth1, mask1);
-
+        depth1 = applyMaskDepth(depth1, mask1);
         Mat gray1;
         Mat gray2;
         cvtColor(rgb1, gray1, CV_BGR2GRAY);
         cvtColor(rgb2, gray2, CV_BGR2GRAY);        
 //        threshold(depth1, depth1, 1300, 65535, THRESH_TOZERO_INV);
-        cv_extend::bilateralFilter(gray1, gray1, 5, 3);
-        cv_extend::bilateralFilter(gray2, gray2, 5, 3);
-//        cv_extend::bilateralFilter(depth1, depth1, 3, 2);
-//        cv_extend::bilateralFilter(depth2, depth2, 3, 3);
+        cv_extend::bilateralFilter(gray1, gray1, 5, 2);
+        cv_extend::bilateralFilter(gray2, gray2, 5, 2);
+        cv_extend::bilateralFilter(depth1, depth1, 5, 2);
+        cv_extend::bilateralFilter(depth2, depth2, 5, 2);
 //        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(5, 5)));
 //        erode(depth2, depth2, getStructuringElement(MORPH_RECT, Size(5, 5)));
 
@@ -235,7 +251,8 @@ int main(int argc, char *argv[]){
         auto stop = high_resolution_clock::now();                
         cerr << "Obtida transf:\n" << aligner.getPoseExponentialMap2(pose).inverse() << endl;
 
-        t = aligner.getPoseExponentialMap2(aligner.getPose6D()).inverse();
+        t = aligner.getPoseExponentialMap2(pose).inverse();
+
         prevTransf = transf;
         transf = transf * t;
         if (generateMesh){
@@ -263,6 +280,8 @@ int main(int argc, char *argv[]){
                 mesh = tsdf.ExtractTriangleMesh();
                 mesh->ComputeTriangleNormals();
                 vis.AddGeometry({mesh});
+//                pcd = tsdf.ExtractPointCloud();
+//                vis.AddGeometry({pcd});
             }
             else{
                 vis.AddGeometry({pcdExtended});
@@ -278,6 +297,7 @@ int main(int argc, char *argv[]){
             break;
         }
     }
+    posesFile.close();
     if (generateMesh)
         WriteTriangleMeshToPLY("result.ply", *mesh);
     else

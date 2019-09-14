@@ -85,23 +85,23 @@ public:
         double scaleFactor = 1.0 / pow(2, level);
         //level comes in reverse order 2 > 1 > 0
         double intScales[] = { 0.0001, 0.0001, 0.0001 };
-        double depScales[] = { 0.0001, 0.0001, 0.0001 };
+        //        double depScales[] = { 0.0001, 0.0001, 0.0001 };
         //        double intScales[] = { 0.001, 0.001, 0.001 };
         //        double depScales[] = { 0.001, 0.001, 0.001 };
 
         Mat residualImage = Mat::zeros(refIntImage.rows * 2, refIntImage.cols, CV_64FC1);
         Mat actIntDerivX = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
         Mat actIntDerivY = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
-        Mat actDepDerivX = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
-        Mat actDepDerivY = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
+        //        Mat actDepDerivX = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
+        //        Mat actDepDerivY = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
 
         Scharr(actIntImage, actIntDerivX, CV_64F, 1, 0, intScales[level], 0.0, cv::BORDER_DEFAULT);
         Scharr(actIntImage, actIntDerivY, CV_64F, 0, 1, intScales[level], 0.0, cv::BORDER_DEFAULT);
-//        Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, depScales[level], 0.0, cv::BORDER_DEFAULT);
-//        Scharr(actDepImage, actDepDerivY, CV_64F, 0, 1, depScales[level], 0.0, cv::BORDER_DEFAULT);
+        //        Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, depScales[level], 0.0, cv::BORDER_DEFAULT);
+        //        Scharr(actDepImage, actDepDerivY, CV_64F, 0, 1, depScales[level], 0.0, cv::BORDER_DEFAULT);
         //        Sobel(actIntImage, actIntDerivX, CV_64F, 1, 0, 3, intScales[level], 0.0, cv::BORDER_DEFAULT);
         //        Sobel(actIntImage, actIntDerivY, CV_64F, 0, 1, 3, intScales[level], 0.0, cv::BORDER_DEFAULT);
-        //        Sobel(actDepImage, actDepDerivX, CV_64F, 1, 0, 3, depScales[level], 0.0, cv::BORDER_DEFAULT);
+        //                Sobel(actDepImage, actDepDerivX, CV_64F, 1, 0, 3, depScales[level], 0.0, cv::BORDER_DEFAULT);
         //        Sobel(actDepImage, actDepDerivY, CV_64F, 0, 1, 3, depScales[level], 0.0, cv::BORDER_DEFAULT);
 
         //        imshow("wDep", normalsWeight);
@@ -128,19 +128,19 @@ public:
         int nCols = refIntImage.cols;
         int nRows = refIntImage.rows;
         double thisSum = 0;
-        const int nthreads = 4;
+        const int nthreads = 2;
         double count[nthreads] = {0};
 
         cv::setNumThreads(nthreads);
         parallel_for_(Range(0, nCols*nRows), [&](const Range& range)
         {
             MatrixXd jacobianRt = MatrixXd(3,6);
-            MatrixXd jacobianRt_z = MatrixXd(1,6);
+            //            MatrixXd jacobianRt_z = MatrixXd(1,6);
             MatrixXd jacobianProj = MatrixXd(2,3);
             MatrixXd jacobianIntensity = MatrixXd(1,6);
             MatrixXd jacobianDepth = MatrixXd(1,6);
             MatrixXd gradPixIntensity = MatrixXd(1,2);
-            MatrixXd gradPixDepth = MatrixXd(1,2);
+            //            MatrixXd gradPixDepth = MatrixXd(1,2);
 
             int nThread = range.start/range.size();
             for (int r = range.start; r < range.end; r++) {
@@ -153,12 +153,13 @@ public:
 
                 gradPixIntensity(0,0) = *actIntDerivX.ptr<double>(y, x);
                 gradPixIntensity(0,1) = *actIntDerivY.ptr<double>(y, x);
-//                gradPixDepth(0,0) = *actDepDerivX.ptr<double>(y, x);
-//                gradPixDepth(0,1) = *actDepDerivY.ptr<double>(y, x);
+                //                gradPixDepth(0,0) = *actDepDerivX.ptr<double>(y, x);
+                //                gradPixDepth(0,1) = *actDepDerivY.ptr<double>(y, x);
 
-//                double wInt = gradPixIntensity(0,0) * gradPixIntensity(0,0);
-//                wInt += gradPixIntensity(0,1) * gradPixIntensity(0,1);
-//                wInt = sqrt(wInt);
+                //                double wInt = gradPixIntensity(0,0) * gradPixIntensity(0,0);
+                //                wInt += gradPixIntensity(0,1) * gradPixIntensity(0,1);
+                //                wInt = sqrt(wInt) > 0.02 ? 1 : 0;
+                //                cerr << wInt << endl;
                 double wInt = 1;
 
                 //******* BEGIN Unprojection of DepthMap ********
@@ -256,7 +257,7 @@ public:
                 jacobianDepth(4) = w2;
                 jacobianDepth(5) = w3;
 
-                //                jacobianDepth = gradPixDepth * jacobianProj * jacobianRt - jacobianRt_z;
+                //jacobianDepth = gradPixDepth * jacobianProj * jacobianRt - jacobianRt_z;
                 jacobianIntensity = gradPixIntensity * jacobianProj * jacobianRt;
 
                 //******* BEGIN Projection of PointCloud on the image plane ********
@@ -279,17 +280,24 @@ public:
 
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
-                    //                    dInt = abs(dInt) > 0.3 ? 0 : dInt;
+//                    dInt = dInt > 0.6 ? 0 : dInt;
                     double dDep = pixDep2 - pixDep1;
                     dDep = pixDep1 == 0 ? 0 : dDep;
-                    dDep = pixDep2 * dDep == 0 ? 0 : dDep;
+                    dDep = pixDep2 == 0 ? 0 : dDep;
                     double diff = abs(dDep);
-//                    dDep = diff > 0.0005 ? 0 : dDep;
                     dDep = diff > 0.003 ? 0 : dDep;
+//                    double select = diff > 0.003 ? 0 : 1;
                     double wDep = *weight.ptr<double>(transfR_int, transfC_int);
-                    //                    double maxCurv = 0.5;
-                    //                    double minCurv = 0.2;
-                    //                    wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
+                    double wInt = wDep;
+//                    //Huber cost
+//                    double k = 0.03;
+//                    if(dDep >= k){
+//                        wInt = k/sqrt(dDep);
+//                    }
+//                    cerr << wInt << endl;
+                    //double maxCurv = 0.5;
+                    //double minCurv = 0.2;
+                    //wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
 
                     jacobians(i,0)   = wDep * jacobianDepth(0,0);
                     jacobians(i,1)   = wDep * jacobianDepth(0,1);
@@ -307,31 +315,30 @@ public:
                     residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep * depth;
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt * color;
 
-                    residualImage.at<double>(transfR_int, transfC_int) = dInt * color;
-                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = 1000 * dDep * depth;
-                    if(diff > 0.0003){
-                        count[nThread] += 1;
-                    }
+                    residualImage.at<double>(transfR_int, transfC_int) = wInt * dInt * color;
+                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = wDep * 1000 * dDep * depth;
+//                    if(diff > 0.0003){
+//                        count[nThread] += 1;
+//                    }
                 }
             }
         }, nthreads
         );
 
-        if (level == 0){
-            resize(residualImage, residualImage, Size(residualImage.cols/2, residualImage.rows/2));
-            Matrix4d Id = Matrix4d::Identity();
-            Mat m1 = transfAndProject(refDepImage, 1, Rt, intrinsecs);
-            Mat m2 = transfAndProject(actDepImage, 1, Id, intrinsecs);
-            Mat m3;
-            m3 = m2 - m1;
-            threshold(m3, m3, 0.003, 0, THRESH_TOZERO_INV);
+//        if (level == 0){
+//            resize(residualImage, residualImage, Size(residualImage.cols/2, residualImage.rows/2));
+            //            Matrix4d Id = Matrix4d::Identity();
+            //            Mat m1 = transfAndProject(refDepImage, 1, Rt, intrinsecs);
+            //            Mat m2 = transfAndProject(actDepImage, 1, Id, intrinsecs);
+            //            Mat m3;
+            //            m3 = m2 - m1;
+            //threshold(m3, m3, 0.001, 0, THRESH_TOZERO_INV);
             //            Scalar mean, stddev;
             //            meanStdDev(residualImage, mean, stddev);
             //            cerr << "Mean " << mean[0] << " Stddev " << stddev[0] << endl;
-            m3 *= 200;
-            imshow("difference", m3);
-        }
-
+            //            m3 *= 200;
+            //            imshow("difference", m3);
+//        }
         imshow("Residual", residualImage);
         waitKey(1);
         double totalCount = 0;
@@ -360,19 +367,6 @@ public:
 
         lie = lie.exp();
         return lie;
-    }
-
-    VectorXd getPoseMatExpToVector(Eigen::Matrix4d_u matrix){
-        VectorXd retVec;
-        retVec.setZero(6);
-        matrix = matrix.log();
-        retVec(0) = matrix(0,3)/5000.;
-        retVec(1) = matrix(1,3)/5000.;
-        retVec(2) = matrix(2,3)/5000.;
-        retVec(3) = matrix(2,1);
-        retVec(4) = matrix(0,2);
-        retVec(5) = matrix(1,0);
-        return retVec;
     }
 
     Matrix4d getPoseExponentialMap(VectorXd poseVector6D){
@@ -464,27 +458,32 @@ public:
 
 //        double chi = residuals.squaredNorm();
 //        cerr << "chi squared " << chi << endl;
-//        double thresh = 0.01;
+//        double thresh = 500;
 //        if(chi > thresh){
 //            cerr << "Escalando o erro " << endl;
 //            residuals *= sqrt(5/chi);
 //        }
-
         MatrixXd gradients = jacobians.transpose() * residuals;
         MatrixXd hessian = jacobians.transpose() * jacobians;
         MatrixXd identity;
         identity.setZero(6,6);
-        identity(0,0) = hessian(0,0);
-        identity(1,1) = hessian(1,1);
-        identity(2,2) = hessian(2,2);
-        identity(3,3) = hessian(3,3);
-        identity(4,4) = hessian(4,4);
-        identity(5,5) = hessian(5,5);
+//        identity(0,0) = hessian(0,0);
+//        identity(1,1) = hessian(1,1);
+//        identity(2,2) = hessian(2,2);
+//        identity(3,3) = hessian(3,3);
+//        identity(4,4) = hessian(4,4);
+//        identity(5,5) = hessian(5,5);
+        identity(0,0) = 1;
+        identity(1,1) = 1;
+        identity(2,2) = 1;
+        identity(3,3) = 1;
+        identity(4,4) = 1;
+        identity(5,5) = 1;
         hessian += lambda * identity;
-        //        actualPoseVector6D -= hessian.ldlt().solve(gradients);
+        //actualPoseVector6D -= hessian.ldlt().solve(gradients);
         actualPoseVector6D -= hessian.inverse() * gradients;
         //Gets best transform until now
-        double gradientNorm = gradients.norm();
+        double gradientNorm = gradients.squaredNorm();
         if(gradientNorm < lastGradientNorm){
             lastGradientNorm = gradientNorm;
             bestPoseVector6D = actualPoseVector6D;
@@ -496,26 +495,31 @@ public:
     std::pair<VectorXd, bool> getPoseTransform(Mat &refGray, Mat &refDepth, Mat &actGray, Mat &actDepth,
                                                bool refinement){
 
+        int rows = refGray.rows;
+        int cols = refGray.cols;
         //Generate weight based on normal map
         actDepth.convertTo(actDepth, CV_64FC1, 1.f/depthScale);
         refDepth.convertTo(refDepth, CV_64FC1, 1.f/depthScale);
+
         Mat normalMap = getNormalMapFromDepth(refDepth, intrinsecs, 0, depthScale);
         Mat normalsWeight = getNormalWeight(normalMap, refDepth, intrinsecs);
+        Mat pyrWeights[3];
+        pyrWeights[0] = normalsWeight;
+        resize(normalsWeight, pyrWeights[1], Size(cols/2, rows/2), 0, 0, INTER_NEAREST);
+        resize(normalsWeight, pyrWeights[2], Size(cols/4, rows/4), 0, 0, INTER_NEAREST);
 
-        Mat pyrWNormals[3];
-        pyrWNormals[0] = normalsWeight;
-        int rows = refGray.rows;
-        int cols = refGray.cols;
-        resize(normalsWeight, pyrWNormals[1], Size(cols/2, rows/2), 0, 0, INTER_NEAREST);
-        resize(normalsWeight, pyrWNormals[2], Size(cols/4, rows/4), 0, 0, INTER_NEAREST);
+        Mat pyrNormalMap[3];
+        pyrNormalMap[0] = normalMap;
+        pyrNormalMap[1] = getNormalMapFromDepth(refDepth, intrinsecs, 1, depthScale);
+        pyrNormalMap[2] = getNormalMapFromDepth(refDepth, intrinsecs, 2, depthScale);
 
         Mat tempRefGray, tempActGray;
         Mat tempRefDepth, tempActDepth;
 
-        int iteratLevel[] = { 10, 5, 3 };
+        int iteratLevel[] = { 10, 5, 5 };
         double lambdas[] = { 0.0002, 0.0002, 0.0002 };
-        double threshold[] = { 80, 160, 160 };        
-        for (int l = 2; l >= 0; l--) {
+        double threshold[] = { 80, 160, 160 };
+        for (int l = 2; l >= 0; l--) {            
             if(l == 2){
                 actualPoseVector6D.setZero(6);
             }
@@ -535,26 +539,24 @@ public:
             this->sum = DBL_MAX;
             cerr << "Iniciando de:" << endl;
             cerr << getPoseExponentialMap2(actualPoseVector6D);
-            bool minimized = true;
+            bool minimized = false;
             double m = 1;
-            double a = 1.5;
-            double b = 1.5;
+            double a = 1.1;
+            double b = 1.1;
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
-                                             pyrWNormals[l], normalMap, residuals, jacobians, l);
+                                             pyrWeights[l], pyrNormalMap[l], residuals, jacobians, l);
 
                 minimized = doSingleIteration(residuals, jacobians, m*lambdas[l], threshold[l]);
                 if (!minimized){
                     m *= 1/a;
-//                    cerr << m*lambdas[l] << endl;
                     actualPoseVector6D = bestPoseVector6D;
                 }
                 else{
                     m *= b;
-//                    cerr << "minimized " << m*lambdas[l] << endl;
                 }
             }
         }
@@ -571,26 +573,25 @@ public:
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
-                                             pyrWNormals[0], normalMap,
+                                             pyrWeights[0], normalMap,
                         residuals, jacobians, 0, false, true);
                 minimized = doSingleIteration(residuals, jacobians, m*lambdas[0], threshold[0]);
-                if (!minimized){
-                    m *= 1/a;
+                if (!minimized){                    m *= 1/a;
                     cerr << m*lambdas[0] << endl;
                     actualPoseVector6D = bestPoseVector6D;
                 }
                 else{
                     m *= b;
-//                    cerr << "minimized " << m*lambdas[0] << endl;
                 }
             }
         }
 
-        MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
-        MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
-        double outlierRatio = computeResidualsAndJacobians(tempRefGray, tempRefDepth,
-                                                           tempActGray, tempActDepth,
-                                                           pyrWNormals[0], normalMap, residuals, jacobians, 0);
+//        MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
+//        MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
+//        double outlierRatio = computeResidualsAndJacobians(tempRefGray, tempRefDepth,
+//                                                           tempActGray, tempActDepth,
+//                                                           pyrWNormals[0], normalMap, residuals, jacobians, 0);
+        double outlierRatio = 0;
         if(outlierRatio > 3){
             return make_pair(bestPoseVector6D, false);
         }

@@ -210,7 +210,7 @@ Mat getNormalMapFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsics, int lev
                           double depthScale){
 
     double scaleFactor = 1.0 / pow(2, level);
-    double nearbNormals[] = { 7, 7, 3};
+    double nearbNormals[] = { 5, 5, 3};
 
     Mat K = (Mat_<double>(3, 3) << intrinsics.GetFocalLength().first * scaleFactor,
              0, intrinsics.GetPrincipalPoint().first * scaleFactor,
@@ -235,8 +235,8 @@ Mat getNormalWeight(Mat normalMap, Mat depth, PinholeCameraIntrinsic intrinsics,
                     double angleCut = 0){
 
     Mat filtered = Mat::zeros(normalMap.rows, normalMap.cols, CV_64FC1);
-//    double cx = intrinsics.GetPrincipalPoint().first;
-//    double cy = intrinsics.GetPrincipalPoint().second;
+    double cx = intrinsics.GetPrincipalPoint().first;
+    double cy = intrinsics.GetPrincipalPoint().second;
     double fx = intrinsics.GetFocalLength().first;
     double fy = intrinsics.GetFocalLength().second;
     double width = intrinsics.width_;
@@ -244,21 +244,29 @@ Mat getNormalWeight(Mat normalMap, Mat depth, PinholeCameraIntrinsic intrinsics,
     double fovX = 2 * atan(width / (2 * fx)) * 180.0 / CV_PI;
     double fovY = 2 * atan(height / (2 * fy)) * 180.0 / CV_PI;
     float aspectRatio = depth.cols / (float)depth.rows; // assuming width > height
+    double maxRadius = sqrt(cx*cx + cy*cy);
 
     normalMap.forEach<Vec3d>([&](Vec3d &pixel, const int *pos) -> void
     {
         if(depth.at<double>(pos[0], pos[1]) > 0 ){
-//            float px = (2 * ((pos[1] + 0.5) / depth.cols) - 1) *
-//                    tan(fovX / 2 * M_PI / 180) * aspectRatio;
-//            float py = (1 - 2 * ((pos[0] + 0.5) / depth.rows)) *
-//                    tan(fovY / 2 * M_PI / 180);
+            float px = (2 * ((pos[1] + 0.5) / depth.cols) - 1) *
+                    tan(fovX / 2 * M_PI / 180) * aspectRatio;
+            float py = (1 - 2 * ((pos[0] + 0.5) / depth.rows)) *
+                    tan(fovY / 2 * M_PI / 180);
 //            cerr << "(" << px << "," << py << ")\n";
+            double x2 = (height/2 - pos[0]) * (height/2 - pos[0]);
+            double y2 = (width/2 - pos[1]) * (width/2 - pos[1]);
+            double radius = sqrt(x2 + y2);
+            double wRadius = (1 - radius/maxRadius);
+            wRadius = wRadius < 0.3 ? 0 : 1;
+//            wRadius = 1;
+//            Vec3d camAxis(px, py, -1);
             Vec3d camAxis(0, 0, -1);
             camAxis = normalize(camAxis);
             pixel = normalize(pixel);
             double uv = pixel.dot(camAxis);
-            uv = cos(acos(uv) * angleThres);
-            filtered.at<double>(pos[0], pos[1]) = uv < angleCut ? 0 : uv;
+            uv = cos(acos(uv) * angleThres);            
+            filtered.at<double>(pos[0], pos[1]) = uv < angleCut ? 0 : uv * wRadius;
         }
     }
     );
@@ -330,7 +338,6 @@ void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
     medianBlur(depthMap, depthMap, 3);
 }
 
-
 void projectPointCloud(PointCloud pointCloud, double maxDist, double depthScale,                       
                        Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics,
                        Mat &depthMap, Mat &indexMap, double radius = 1){
@@ -382,7 +389,7 @@ void projectPointCloud(PointCloud pointCloud, double maxDist, double depthScale,
             }
         }
     }
-    depthMap.setTo(0, depthMap == 65535);
+    depthMap.setTo(0, depthMap == 65535);    
     medianBlur(depthMap, depthMap, 3);
 }
 
