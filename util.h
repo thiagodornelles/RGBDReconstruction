@@ -20,6 +20,7 @@ using namespace open3d::utility;
 using namespace cv;
 using namespace std;
 using namespace rgbd;
+using namespace Eigen;
 
 const int confThresh = 0;
 double angleInsert = 0;
@@ -605,8 +606,9 @@ Mat applyMaskDepth(Mat depthMap, Mat maskMap){
     for (int r = 0; r < depthMap.rows; ++r) {
         for (int c = 0; c < depthMap.cols; ++c) {
             ushort mask = *maskMap.ptr<ushort>(r, c);
-            if(mask > 0){
-                *depthClean.ptr<ushort>(r, c) = *depthMap.ptr<ushort>(r, c);
+            if(mask > 0){                
+                double d = *depthMap.ptr<ushort>(r, c);
+                *depthClean.ptr<ushort>(r, c) = d;
             }
             else{
                 *depthClean.ptr<ushort>(r, c) = 0;
@@ -614,6 +616,36 @@ Mat applyMaskDepth(Mat depthMap, Mat maskMap){
         }
     }
     return depthClean;
+}
+
+void weighting(MatrixXd &residuals, MatrixXd &weights) {
+    int n = residuals.rows()/2;
+    double lambda_init = 1.0 / (5.0 * 5.0);
+    double lambda = lambda_init;
+    double num = 0.0;
+    double dof = 5;
+    weights = MatrixXd::Ones(residuals.rows(), 1);
+    int itr = 0;
+    do {
+        itr++;
+        lambda_init = lambda;
+        lambda = 0.0f;
+        num = 0.0f;
+        for(int i = 0; i < n; ++i) {
+            double data = residuals(i, 0);
+            if(std::isfinite(data)) {
+                num += 1.0f;
+                lambda += data * data * ( (dof + 1.0f) / (dof + lambda_init * data * data) );
+            }
+        }
+        lambda /= num;
+        lambda = 1.0f / lambda;
+    } while(std::abs(lambda - lambda_init) > 1e-3);
+
+    for(int i=0; i<n; i++){
+        double data = residuals(i, 0);
+        weights(i, 0) = ( (dof + 1.0f) / (dof + lambda * data * data) );
+    }
 }
 
 #endif

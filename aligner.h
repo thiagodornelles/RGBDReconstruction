@@ -85,23 +85,23 @@ public:
         double scaleFactor = 1.0 / pow(2, level);
         //level comes in reverse order 2 > 1 > 0
         double intScales[] = { 0.0001, 0.0001, 0.0001 };
-        //        double depScales[] = { 0.0001, 0.0001, 0.0001 };
+        double depScales[] = { 0.0001, 0.0001, 0.0001 };
         //        double intScales[] = { 0.001, 0.001, 0.001 };
         //        double depScales[] = { 0.001, 0.001, 0.001 };
 
         Mat residualImage = Mat::zeros(refIntImage.rows * 2, refIntImage.cols, CV_64FC1);
         Mat actIntDerivX = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
         Mat actIntDerivY = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
-        //        Mat actDepDerivX = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
-        //        Mat actDepDerivY = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
+//        Mat actDepDerivX = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
+//        Mat actDepDerivY = Mat::zeros(refIntImage.rows, refIntImage.cols, CV_64FC1);
 
         Scharr(actIntImage, actIntDerivX, CV_64F, 1, 0, intScales[level], 0.0, cv::BORDER_DEFAULT);
         Scharr(actIntImage, actIntDerivY, CV_64F, 0, 1, intScales[level], 0.0, cv::BORDER_DEFAULT);
-        //        Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, depScales[level], 0.0, cv::BORDER_DEFAULT);
-        //        Scharr(actDepImage, actDepDerivY, CV_64F, 0, 1, depScales[level], 0.0, cv::BORDER_DEFAULT);
+//        Scharr(actDepImage, actDepDerivX, CV_64F, 1, 0, depScales[level], 0.0, cv::BORDER_DEFAULT);
+//        Scharr(actDepImage, actDepDerivY, CV_64F, 0, 1, depScales[level], 0.0, cv::BORDER_DEFAULT);
         //        Sobel(actIntImage, actIntDerivX, CV_64F, 1, 0, 3, intScales[level], 0.0, cv::BORDER_DEFAULT);
         //        Sobel(actIntImage, actIntDerivY, CV_64F, 0, 1, 3, intScales[level], 0.0, cv::BORDER_DEFAULT);
-        //                Sobel(actDepImage, actDepDerivX, CV_64F, 1, 0, 3, depScales[level], 0.0, cv::BORDER_DEFAULT);
+        //        Sobel(actDepImage, actDepDerivX, CV_64F, 1, 0, 3, depScales[level], 0.0, cv::BORDER_DEFAULT);
         //        Sobel(actDepImage, actDepDerivY, CV_64F, 0, 1, 3, depScales[level], 0.0, cv::BORDER_DEFAULT);
 
         //        imshow("wDep", normalsWeight);
@@ -135,7 +135,7 @@ public:
         parallel_for_(Range(0, nCols*nRows), [&](const Range& range)
         {
             MatrixXd jacobianRt = MatrixXd(3,6);
-            //            MatrixXd jacobianRt_z = MatrixXd(1,6);
+//            MatrixXd jacobianRt_z = MatrixXd(1,6);
             MatrixXd jacobianProj = MatrixXd(2,3);
             MatrixXd jacobianIntensity = MatrixXd(1,6);
             MatrixXd jacobianDepth = MatrixXd(1,6);
@@ -236,12 +236,12 @@ public:
                 jacobianProj(0,2) = -(fx*trfPoint3D(0))*invTransfZ*invTransfZ;
                 jacobianProj(1,2) = -(fy*trfPoint3D(1))*invTransfZ*invTransfZ;
 
-                //                jacobianRt_z(0,0) = jacobianRt(2,0);
-                //                jacobianRt_z(0,1) = jacobianRt(2,1);
-                //                jacobianRt_z(0,2) = jacobianRt(2,2);
-                //                jacobianRt_z(0,3) = jacobianRt(2,3);
-                //                jacobianRt_z(0,4) = jacobianRt(2,4);
-                //                jacobianRt_z(0,5) = jacobianRt(2,5);
+//                jacobianRt_z(0,0) = jacobianRt(2,0);
+//                jacobianRt_z(0,1) = jacobianRt(2,1);
+//                jacobianRt_z(0,2) = jacobianRt(2,2);
+//                jacobianRt_z(0,3) = jacobianRt(2,3);
+//                jacobianRt_z(0,4) = jacobianRt(2,4);
+//                jacobianRt_z(0,5) = jacobianRt(2,5);
 
                 double nx = (*normalMap.ptr<Vec3d>(y, x))[0];
                 double ny = (*normalMap.ptr<Vec3d>(y, x))[1];
@@ -257,7 +257,7 @@ public:
                 jacobianDepth(4) = w2;
                 jacobianDepth(5) = w3;
 
-                //jacobianDepth = gradPixDepth * jacobianProj * jacobianRt - jacobianRt_z;
+//                jacobianDepth = gradPixDepth * jacobianProj * jacobianRt - jacobianRt_z;
                 jacobianIntensity = gradPixIntensity * jacobianProj * jacobianRt;
 
                 //******* BEGIN Projection of PointCloud on the image plane ********
@@ -280,40 +280,34 @@ public:
 
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
-//                    dInt = dInt > 0.6 ? 0 : dInt;
+                    //dInt = dInt > 0.1 ? 0 : dInt;
                     double dDep = pixDep2 - pixDep1;
                     dDep = pixDep1 == 0 ? 0 : dDep;
                     dDep = pixDep2 == 0 ? 0 : dDep;
                     double diff = abs(dDep);
-                    dDep = diff > 0.003 ? 0 : dDep;
+                    dDep = diff > 0.05 ? 0 : dDep;
 //                    double select = diff > 0.003 ? 0 : 1;
                     double wDep = *weight.ptr<double>(transfR_int, transfC_int);
                     double wInt = wDep;
-//                    //Huber cost
-//                    double k = 0.03;
-//                    if(dDep >= k){
-//                        wInt = k/sqrt(dDep);
-//                    }
-//                    cerr << wInt << endl;
                     //double maxCurv = 0.5;
                     //double minCurv = 0.2;
                     //wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
 
-                    jacobians(i,0)   = wDep * jacobianDepth(0,0);
-                    jacobians(i,1)   = wDep * jacobianDepth(0,1);
-                    jacobians(i,2)   = wDep * jacobianDepth(0,2);
-                    jacobians(i,3)   = wDep * jacobianDepth(0,3);
-                    jacobians(i,4)   = wDep * jacobianDepth(0,4);
-                    jacobians(i,5)   = wDep * jacobianDepth(0,5);
-                    jacobians(i*2,0) = wInt * jacobianIntensity(0,0);
-                    jacobians(i*2,1) = wInt * jacobianIntensity(0,1);
-                    jacobians(i*2,2) = wInt * jacobianIntensity(0,2);
-                    jacobians(i*2,3) = wInt * jacobianIntensity(0,3);
-                    jacobians(i*2,4) = wInt * jacobianIntensity(0,4);
-                    jacobians(i*2,5) = wInt * jacobianIntensity(0,5);
+                    jacobians(i,0)   = wInt * jacobianIntensity(0,0);
+                    jacobians(i,1)   = wInt * jacobianIntensity(0,1);
+                    jacobians(i,2)   = wInt * jacobianIntensity(0,2);
+                    jacobians(i,3)   = wInt * jacobianIntensity(0,3);
+                    jacobians(i,4)   = wInt * jacobianIntensity(0,4);
+                    jacobians(i,5)   = wInt * jacobianIntensity(0,5);
+                    jacobians(i*2,0) = wDep * jacobianDepth(0,0);
+                    jacobians(i*2,1) = wDep * jacobianDepth(0,1);
+                    jacobians(i*2,2) = wDep * jacobianDepth(0,2);
+                    jacobians(i*2,3) = wDep * jacobianDepth(0,3);
+                    jacobians(i*2,4) = wDep * jacobianDepth(0,4);
+                    jacobians(i*2,5) = wDep * jacobianDepth(0,5);
 
-                    residuals(nCols * transfR_int + transfC_int, 0) = wDep * dDep * depth;
-                    residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wInt * dInt * color;
+                    residuals(nCols * transfR_int + transfC_int, 0) = wInt * dInt * color;
+                    residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wDep * dDep * depth;
 
                     residualImage.at<double>(transfR_int, transfC_int) = wInt * dInt * color;
                     residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = wDep * 1000 * dDep * depth;
@@ -463,22 +457,29 @@ public:
 //            cerr << "Escalando o erro " << endl;
 //            residuals *= sqrt(5/chi);
 //        }
+
+        //Weighting of residuals
+//        MatrixXd weights;
+        //MatrixXd::Ones(rows * cols * 2, 1);
+//        weighting(residuals, weights);
+//        residuals = residuals.transpose() * weights;
+//        jacobians = jacobians.transpose() * weights;
         MatrixXd gradients = jacobians.transpose() * residuals;
         MatrixXd hessian = jacobians.transpose() * jacobians;
         MatrixXd identity;
         identity.setZero(6,6);
-//        identity(0,0) = hessian(0,0);
-//        identity(1,1) = hessian(1,1);
-//        identity(2,2) = hessian(2,2);
-//        identity(3,3) = hessian(3,3);
-//        identity(4,4) = hessian(4,4);
-//        identity(5,5) = hessian(5,5);
-        identity(0,0) = 1;
-        identity(1,1) = 1;
-        identity(2,2) = 1;
-        identity(3,3) = 1;
-        identity(4,4) = 1;
-        identity(5,5) = 1;
+        identity(0,0) = hessian(0,0);
+        identity(1,1) = hessian(1,1);
+        identity(2,2) = hessian(2,2);
+        identity(3,3) = hessian(3,3);
+        identity(4,4) = hessian(4,4);
+        identity(5,5) = hessian(5,5);
+//        identity(0,0) = 1;
+//        identity(1,1) = 1;
+//        identity(2,2) = 1;
+//        identity(3,3) = 1;
+//        identity(4,4) = 1;
+//        identity(5,5) = 1;
         hessian += lambda * identity;
         //actualPoseVector6D -= hessian.ldlt().solve(gradients);
         actualPoseVector6D -= hessian.inverse() * gradients;

@@ -63,6 +63,7 @@ int main(int argc, char *argv[]){
 
     Eigen::Matrix4d t = Eigen::Matrix4d::Identity();
     Eigen::Matrix4d transf = Eigen::Matrix4d::Identity();
+    Eigen::Matrix4d actualPose = Eigen::Matrix4d::Identity();
     transf <<   1,  0,  0,  0,
                 0, -1,  0,  0,
                 0,  0, -1,  0,
@@ -85,17 +86,18 @@ int main(int argc, char *argv[]){
     //Kinect v2
     //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(512, 424, 363.491, 363.491, 256.496, 207.778);
 
-    double depthScale = 2000;
+    double depthScale = 1000;
     double maxDistProjection = 2;
     Aligner aligner(intrinsics);
     aligner.setDist(0.01, 2);
     aligner.depthScale = depthScale;
 
     //0.000125
-    ScalableTSDFVolume tsdf(1.f/depthScale, 0.01, TSDFVolumeColorType::RGB8);
+    ScalableTSDFVolume tsdf(1.f/depthScale, 0.05, TSDFVolumeColorType::RGB8);
 //    ScalableTSDFVolume tsdf(1.f/depthScale*2, 0.005, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Kenny_Turntable/";
+    //string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Kenny_Turntable/";
+    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Kenny_Handheld/";
 //    string datasetFolder = "/Users/thiago/Datasets/mickey/";
 //    string datasetFolder = "/media/thiago/BigStorage/rgb-d dataset/cheezit/";
 //    string datasetFolder = "/media/thiago/BigStorage/thiago/";
@@ -125,7 +127,7 @@ int main(int argc, char *argv[]){
         int i2 = i1 + step;
 
         posesFile << i1 << endl;
-        posesFile << transf << endl;
+        posesFile << actualPose << endl;
 
         string depthPath1 = datasetFolder + "depth/" + depthFiles[i1];
         string depthPath2 = datasetFolder + "depth/" + depthFiles[i2];
@@ -152,7 +154,7 @@ int main(int argc, char *argv[]){
         Mat index2;
         if (i == initFrame){
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
-            depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);            
+            depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
             depth2 = applyMaskDepth(depth2, mask2);
         }
         else{
@@ -251,13 +253,14 @@ int main(int argc, char *argv[]){
         auto stop = high_resolution_clock::now();                
         cerr << "Obtida transf:\n" << aligner.getPoseExponentialMap2(pose).inverse() << endl;
 
-        t = aligner.getPoseExponentialMap2(pose).inverse();
-
-        prevTransf = transf;
-        transf = transf * t;
         if (generateMesh){
             tsdf.Integrate(*rgbdImage, intrinsics, transf.inverse());            
         }
+
+        t = aligner.getPoseExponentialMap2(pose).inverse();
+        prevTransf = transf;
+        transf = transf * t;
+        actualPose = actualPose * t;
 
         auto duration = duration_cast<microseconds>(stop - start);
         cerr << "Time elapsed: " << duration.count()/1000000.f << endl;
@@ -277,8 +280,8 @@ int main(int argc, char *argv[]){
             vis.GetRenderOption().mesh_show_back_face_ = true;
             vis.GetViewControl().SetViewMatrices(initCam);
             if(generateMesh){
+//                mesh->ComputeTriangleNormals();
                 mesh = tsdf.ExtractTriangleMesh();
-                mesh->ComputeTriangleNormals();
                 vis.AddGeometry({mesh});
 //                pcd = tsdf.ExtractPointCloud();
 //                vis.AddGeometry({pcd});
@@ -297,10 +300,16 @@ int main(int argc, char *argv[]){
             break;
         }
     }
+    posesFile << depthFiles.size()-1 << endl;
+    posesFile << actualPose << endl;
     posesFile.close();
-    if (generateMesh)
-        WriteTriangleMeshToPLY("result.ply", *mesh);
-    else
-        WritePointCloudToPLY("result.ply", *pcdExtended);
+    if (generateMesh){
+        mesh->ComputeTriangleNormals();
+        mesh = tsdf.ExtractTriangleMesh();
+        WriteTriangleMeshToPLY(datasetFolder + "mesh.ply", *mesh);
+    }
+    else{
+        WritePointCloudToPLY(datasetFolder + "pointcloud.ply", *pcdExtended);
+    }
     return 0;
 }
