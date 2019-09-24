@@ -211,7 +211,7 @@ Mat getNormalMapFromDepth(Mat &depth, PinholeCameraIntrinsic intrinsics, int lev
                           double depthScale){
 
     double scaleFactor = 1.0 / pow(2, level);
-    double nearbNormals[] = { 5, 5, 3};
+    double nearbNormals[] = { 5, 5, 3, 3};
 
     Mat K = (Mat_<double>(3, 3) << intrinsics.GetFocalLength().first * scaleFactor,
              0, intrinsics.GetPrincipalPoint().first * scaleFactor,

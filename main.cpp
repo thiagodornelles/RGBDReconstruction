@@ -20,6 +20,7 @@
 #include "filereader.h"
 #include "fastbilateral.h"
 #include "util.h"
+#include "initAligner.h"
 #include "aligner.h"
 
 using namespace open3d;
@@ -93,10 +94,10 @@ int main(int argc, char *argv[]){
     aligner.depthScale = depthScale;
 
     //0.000125
-    ScalableTSDFVolume tsdf(1.f/depthScale, 0.05, TSDFVolumeColorType::RGB8);
+    ScalableTSDFVolume tsdf(1.f/depthScale, 0.005, TSDFVolumeColorType::RGB8);
 //    ScalableTSDFVolume tsdf(1.f/depthScale*2, 0.005, TSDFVolumeColorType::RGB8);
 
-    //string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Kenny_Turntable/";
+//    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Kenny_Turntable/";
     string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Kenny_Handheld/";
 //    string datasetFolder = "/Users/thiago/Datasets/mickey/";
 //    string datasetFolder = "/media/thiago/BigStorage/rgb-d dataset/cheezit/";
@@ -210,8 +211,7 @@ int main(int argc, char *argv[]){
         Image rgb = CreateRGBImageFromMat(&rgb1);
         Image depth = CreateDepthImageFromMat(&depth1, NULL);
         rgbdImage = CreateRGBDImageFromColorAndDepth(rgb, depth, depthScale, 1.5, false);
-
-        shared_ptr<PointCloud> pcd = CreatePointCloudFromRGBDImage(*rgbdImage, intrinsics, initCam);
+        shared_ptr<PointCloud> actualPointCloud = CreatePointCloudFromRGBDImage(*rgbdImage, intrinsics, initCam);
 
         Vector3d prevTranslation(prevTransf(0,3), prevTransf(1,3), prevTransf(2,3));
 
@@ -236,25 +236,44 @@ int main(int argc, char *argv[]){
         voxelDSAngle += angle;
 
         if (!generateMesh){
-            pcd->Transform(transf);
+            actualPointCloud->Transform(transf);
             auto start = high_resolution_clock::now();
-            merge(pcdExtended, pcd, prevTransf, transf,
+            merge(pcdExtended, actualPointCloud, prevTransf, transf,
                   intrinsics, depthScale, totalAngle, maskNormals);
             auto stop = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(stop - start);
             cerr << "Merge time: " << duration.count()/1000000.f << endl;            
         }
 
-        //************ ALIGNMENT ************//
-        auto start = high_resolution_clock::now();
+        //************ INITIAL ALIGNMENT ************//
+        double focal = intrinsics.GetFocalLength().first;
+        double cx = intrinsics.GetPrincipalPoint().first;
+        double cy = intrinsics.GetPrincipalPoint().second;
+
+        Eigen::Matrix4d initTransf = coarseRegistration(depthTmp1, rgb1, depthTmp2, rgb2, focal, cx, cy);
+        cerr << initTransf << endl;
+        cerr << "--------" << endl;
+        VectorXd initVector;
+        initVector.setZero(6);
+        initVector(0) = initTransf(0,3);
+        initVector(1) = initTransf(1,3);
+        initVector(2) = initTransf(2,3);
+        initVector(3) = initTransf(2,1);
+        initVector(4) = initTransf(0,2);
+        initVector(5) = initTransf(1,0);
+        aligner.setInitialPoseVector(initVector);
+        //************ INITIAL ALIGNMENT ************//
+
+        //************ REFINE ALIGNMENT ************//
+        auto start = high_resolution_clock::now();        
         std::pair<VectorXd, bool> result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
         VectorXd pose = result.first;
         lastValid = result.second;        
-        auto stop = high_resolution_clock::now();                
+        auto stop = high_resolution_clock::now();
         cerr << "Obtida transf:\n" << aligner.getPoseExponentialMap2(pose).inverse() << endl;
 
         if (generateMesh){
-            tsdf.Integrate(*rgbdImage, intrinsics, transf.inverse());            
+            tsdf.Integrate(*rgbdImage, intrinsics, transf.inverse());
         }
 
         t = aligner.getPoseExponentialMap2(pose).inverse();

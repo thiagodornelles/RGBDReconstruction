@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 4.5.0, 2019-09-14T04:42:14. -->
+<!-- Written by QtCreator 4.5.0, 2019-09-24T01:56:18. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
@@ -251,7 +251,7 @@
      <value type="int">14</value>
     </valuelist>
     <value type="QString" key="CMakeProjectManager.CMakeRunConfiguation.Title">DepthRGBD</value>
-    <value type="QString" key="CMakeProjectManager.CMakeRunConfiguration.Arguments">mesh 9 1000 1</value>
+    <value type="QString" key="CMakeProjectManager.CMakeRunConfiguration.Arguments">mesh 0 1000 1</value>
     <value type="QString" key="CMakeProjectManager.CMakeRunConfiguration.UserWorkingDirectory"></value>
     <value type="QString" key="CMakeProjectManager.CMakeRunConfiguration.UserWorkingDirectory.default">/home/thiago/qt_projects/build-DepthRGBD-Desktop_Qt_5_10_0_GCC_64bit-Release with Debug Information</value>
     <value type="int" key="PE.EnvironmentAspect.Base">2</value>

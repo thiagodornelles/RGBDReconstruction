@@ -16,6 +16,7 @@ set(project_sources
     pointcloudextend.h
     visibility.h
     scalableTSDF.h
+    initAligner.h
 )
 
 # Find OpenCV
