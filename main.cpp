@@ -22,13 +22,13 @@
 #include "util.h"
 #include "initAligner.h"
 #include "aligner.h"
+#include "groundTruthReader.h"
 
 using namespace open3d;
 using namespace open3d::integration;
 using namespace open3d::visualization;
 using namespace std;
 using namespace cv;
-
 using namespace std::chrono;
 
 bool generateMesh = false;
@@ -36,6 +36,7 @@ double totalAngle = 0;
 double totalTransl = 0;
 double voxelDSAngle = 0;
 double radius = 0.25;
+double errorDepth = 0;
 
 int main(int argc, char *argv[]){
 
@@ -76,7 +77,7 @@ int main(int argc, char *argv[]){
     PinholeCameraIntrinsic intrinsics =
             PinholeCameraIntrinsic(640, 480, 538.925221, 538.925221, 316.473843, 243.262082);
     //Kinect 360 unprojection
-    //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 589.322232303107740, 589.849429472609130, 321.140896612950880, 235.563195335248370);
+//    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 589.322232303107740, 589.849429472609130, 321.140896612950880, 235.563195335248370);
 //    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
     //InHand Dataset
 //    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 474.31524658203125, 474.31524658203125, 317.4243469238281, 244.9296875);
@@ -90,22 +91,22 @@ int main(int argc, char *argv[]){
     double depthScale = 1000;
     double maxDistProjection = 2;
     Aligner aligner(intrinsics);
-    aligner.setDist(0.01, 2);
+    aligner.setDist(0.1, 2);
     aligner.depthScale = depthScale;
 
     //0.000125
-    ScalableTSDFVolume tsdf(1.f/depthScale, 0.005, TSDFVolumeColorType::RGB8);
-//    ScalableTSDFVolume tsdf(1.f/depthScale*2, 0.005, TSDFVolumeColorType::RGB8);
+    ScalableTSDFVolume tsdf(1.f/depthScale, 0.02, TSDFVolumeColorType::RGB8);
+    ScalableTSDFVolume tsdfParcial(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
+    ScalableTSDFVolume tsdfFinal(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
 
-//    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Kenny_Turntable/";
-    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Kenny_Handheld/";
-//    string datasetFolder = "/Users/thiago/Datasets/mickey/";
-//    string datasetFolder = "/media/thiago/BigStorage/rgb-d dataset/cheezit/";
-//    string datasetFolder = "/media/thiago/BigStorage/thiago/";
+    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Teddy_Handheld/";
 
     //Output file with poses
-    ofstream posesFile;
+    ofstream posesFile, diffFile;
     posesFile.open(datasetFolder + "poses.txt");
+    diffFile.open(datasetFolder + "difference.txt");
+    //groundtruth reader
+    vector<Matrix4d> gt_poses = readGTFile(datasetFolder + "markerboard_poses.txt");
 
     vector<string> depthFiles, rgbFiles, omaskFiles, tmaskFiles;
     readFilenames(depthFiles, datasetFolder + "depth/");
@@ -115,6 +116,9 @@ int main(int argc, char *argv[]){
 
     shared_ptr<PointCloudExtended> pcdExtended = std::make_shared<PointCloudExtended>();
     shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
+
+    vector< shared_ptr<PointCloud> > parcialPcds;
+    vector<Matrix4d> parcialPcdsPoses;    
 
     VectorXd lastPose;
     bool lastValid = true;
@@ -128,7 +132,17 @@ int main(int argc, char *argv[]){
         int i2 = i1 + step;
 
         posesFile << i1 << endl;
-        posesFile << actualPose << endl;
+        posesFile << actualPose << endl;        
+
+        cerr << "diff Estimated - GT" << endl;
+        cerr << (actualPose - gt_poses[i]).cwiseAbs() << endl;
+        Vector4d position;
+        position << 0,0,0,1;
+        cerr << "diff camera position Est - GT: " << endl
+             << (actualPose * position - gt_poses[i] * position).cwiseAbs() << endl;
+        diffFile << i << endl;
+        diffFile << (actualPose * position - gt_poses[i] * position).cwiseAbs() << endl;
+        cerr << "difference between depths: " << errorDepth << endl;
 
         string depthPath1 = datasetFolder + "depth/" + depthFiles[i1];
         string depthPath2 = datasetFolder + "depth/" + depthFiles[i2];
@@ -148,12 +162,13 @@ int main(int argc, char *argv[]){
         Mat tmask2 = imread(tmaskPath2);
         Mat mask1 = omask1 + tmask1;
         Mat mask2 = omask2 + tmask2;
-//        imshow("mask", mask1);
+        removeMaskBorders(mask1, 50, 50);
+        removeMaskBorders(mask2, 50, 50);
         bitwise_and(rgb1, mask1, rgb1);
         bitwise_and(rgb2, mask2, rgb2);
         Mat depth2, depth1;
-        Mat index2;
-        if (i == initFrame){
+        Mat index2;        
+        if (i == initFrame){            
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
             depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
             depth2 = applyMaskDepth(depth2, mask2);
@@ -166,24 +181,33 @@ int main(int argc, char *argv[]){
                                           intrinsics, depthScale, radius, initFrame, i1, depth2, index2);
             }
             else{
-                projectPointCloud(*tsdf.ExtractPointCloud(), maxDistProjection, depthScale,
-                                  transf.inverse(), intrinsics, depth2, index2);
+                Mat color;
+                projectPointCloudWithColor(*tsdf.ExtractPointCloud(), maxDistProjection, depthScale,
+                                           transf.inverse(), intrinsics, depth2, color);
+                imshow("previewModel", color);
+                /*
+                if(i % 30 == 0 || i == depthFiles.size()-2){
+                    //Storing PointCloud from TSDF and its global pose
+                    parcialPcds.push_back(tsdfParcial.ExtractPointCloud());
+                    parcialPcdsPoses.push_back(transf.inverse());
+                    tsdfParcial.Reset();
+                }
+                */
             }
-//            imshow("index", index2);
-//            imshow("projection", depth2 * 10);
         }
         depth1 = applyMaskDepth(depth1, mask1);
+        threshold(depth1, depth1, 500, 65535, THRESH_TOZERO);
+        threshold(depth1, depth1, 1000, 65535, THRESH_TOZERO_INV);
         Mat gray1;
         Mat gray2;
         cvtColor(rgb1, gray1, CV_BGR2GRAY);
-        cvtColor(rgb2, gray2, CV_BGR2GRAY);        
-//        threshold(depth1, depth1, 1300, 65535, THRESH_TOZERO_INV);
-        cv_extend::bilateralFilter(gray1, gray1, 5, 2);
-        cv_extend::bilateralFilter(gray2, gray2, 5, 2);
-        cv_extend::bilateralFilter(depth1, depth1, 5, 2);
-        cv_extend::bilateralFilter(depth2, depth2, 5, 2);
-//        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(5, 5)));
-//        erode(depth2, depth2, getStructuringElement(MORPH_RECT, Size(5, 5)));
+        cvtColor(rgb2, gray2, CV_BGR2GRAY);
+        cv_extend::bilateralFilter(gray1, gray1, 5, 3);
+        cv_extend::bilateralFilter(gray2, gray2, 5, 3);
+        cv_extend::bilateralFilter(depth1, depth1, 5, 3);
+        cv_extend::bilateralFilter(depth2, depth2, 5, 3);
+//        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(3, 3)));
+//        erode(depth2, depth2, getStructuringElement(MORPH_RECT, Size(3, 3)));
 
         Mat grayOut, depthOut;
         hconcat(gray1, gray2, grayOut);
@@ -205,8 +229,8 @@ int main(int argc, char *argv[]){
         Mat depthTmp2;
         depth2.convertTo(depthTmp2, CV_64FC1, 1.0/depthScale);        
         Mat normalMap2 = getNormalMapFromDepth(depthTmp2, intrinsics, 0, depthScale);
-        Mat model = getNormalWeight(normalMap2, depthTmp2, intrinsics);
-        imshow("preview", model);
+        Mat model = getNormalWeight(normalMap2, depthTmp2, intrinsics);        
+        imshow("previewNormals", model);
 
         Image rgb = CreateRGBImageFromMat(&rgb1);
         Image depth = CreateDepthImageFromMat(&depth1, NULL);
@@ -250,30 +274,28 @@ int main(int argc, char *argv[]){
         double cx = intrinsics.GetPrincipalPoint().first;
         double cy = intrinsics.GetPrincipalPoint().second;
 
-        Eigen::Matrix4d initTransf = coarseRegistration(depthTmp1, rgb1, depthTmp2, rgb2, focal, cx, cy);
-        cerr << initTransf << endl;
+        VectorXd pose = coarseRegistration(depthTmp1, rgb1, depthTmp2, rgb2, focal, cx, cy);
+        aligner.setInitialPoseVector(pose);
+        cerr << aligner.getPoseExponentialMap2(pose).inverse() << endl;
         cerr << "--------" << endl;
-        VectorXd initVector;
-        initVector.setZero(6);
-        initVector(0) = initTransf(0,3);
-        initVector(1) = initTransf(1,3);
-        initVector(2) = initTransf(2,3);
-        initVector(3) = initTransf(2,1);
-        initVector(4) = initTransf(0,2);
-        initVector(5) = initTransf(1,0);
-        aligner.setInitialPoseVector(initVector);
         //************ INITIAL ALIGNMENT ************//
 
         //************ REFINE ALIGNMENT ************//
-        auto start = high_resolution_clock::now();        
-        std::pair<VectorXd, bool> result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
-        VectorXd pose = result.first;
-        lastValid = result.second;        
+        auto start = high_resolution_clock::now();
+        std::pair<VectorXd, double> result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, true);
+        pose = result.first;
+        errorDepth = result.second;
         auto stop = high_resolution_clock::now();
         cerr << "Obtida transf:\n" << aligner.getPoseExponentialMap2(pose).inverse() << endl;
 
+        //GroundTruth tests
+//        prevTransf = transf;
+//        transf = gt_poses[i];
+//        actualPose = transf;
+
         if (generateMesh){
             tsdf.Integrate(*rgbdImage, intrinsics, transf.inverse());
+            //tsdfParcial.Integrate(*rgbdImage, intrinsics, transf.inverse());
         }
 
         t = aligner.getPoseExponentialMap2(pose).inverse();
@@ -288,8 +310,7 @@ int main(int argc, char *argv[]){
         cerr << "TRANSLATION: " << totalTransl << endl;
         cerr << "ANGLE: " << totalAngle << endl;
 
-        char key = waitKey(100);
-        if(key == '1') imwrite("teste.png", depthOut);
+        char key = waitKey(100);        
         if(i == finalFrame || key == 'z'){
             Visualizer vis;
             vis.CreateVisualizerWindow("Visualization", 800, 600);
@@ -299,7 +320,20 @@ int main(int argc, char *argv[]){
             vis.GetRenderOption().mesh_show_back_face_ = true;
             vis.GetViewControl().SetViewMatrices(initCam);
             if(generateMesh){
-//                mesh->ComputeTriangleNormals();
+                //Generating final model
+                /*
+                tsdfFinal.Reset();
+                for (int i = 0; i < parcialPcdsPoses.size(); ++i) {
+                    Mat depthTSDF, colorTSDF;
+                    projectPointCloudWithColor(*parcialPcds[i], 2.0, depthScale, parcialPcdsPoses[i],
+                                               intrinsics, depthTSDF, colorTSDF);
+                    Image rgb = CreateRGBImageFromMat(&colorTSDF);
+                    Image depth = CreateDepthImageFromMat(&depthTSDF, NULL);
+                    shared_ptr<RGBDImage> rgbdImage;
+                    rgbdImage = CreateRGBDImageFromColorAndDepth(rgb, depth, depthScale, 2.0, false);
+                    tsdfFinal.Integrate(*rgbdImage, intrinsics, parcialPcdsPoses[i]);
+                }
+                */
                 mesh = tsdf.ExtractTriangleMesh();
                 vis.AddGeometry({mesh});
 //                pcd = tsdf.ExtractPointCloud();
@@ -322,6 +356,7 @@ int main(int argc, char *argv[]){
     posesFile << depthFiles.size()-1 << endl;
     posesFile << actualPose << endl;
     posesFile.close();
+    diffFile.close();
     if (generateMesh){
         mesh->ComputeTriangleNormals();
         mesh = tsdf.ExtractTriangleMesh();

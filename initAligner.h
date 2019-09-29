@@ -20,7 +20,7 @@ double getMatchingsBetween2Frames(Mat &depth1, Mat &rgb1, Mat &rgb2,
     Mat desc1, desc2;
     vector< vector<DMatch> > matches;
 
-    Ptr<Feature2D> orb = ORB::create(1000);
+    Ptr<Feature2D> orb = ORB::create(3000);
     Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create("BruteForce-Hamming");
 
     orb->detectAndCompute(rgb1, noArray(), keyPoints1, desc1, false);
@@ -34,13 +34,20 @@ double getMatchingsBetween2Frames(Mat &depth1, Mat &rgb1, Mat &rgb2,
         DMatch d1  = matches[i][0];
         DMatch d2  = matches[i][1];
 
-        if (d1.distance < 0.6 * d2.distance) {
-            KeyPoint kt1 = keyPoints1.at(d1.queryIdx);
-            KeyPoint kt2 = keyPoints2.at(d1.trainIdx);
+        KeyPoint kt1 = keyPoints1.at(d1.queryIdx);
+        KeyPoint kt2 = keyPoints2.at(d1.trainIdx);
+        double z1 = *depth1.ptr<double>(kt2.pt.y, kt2.pt.x);
+        double z2 = *depth1.ptr<double>(kt2.pt.y, kt2.pt.x);
+        double z3 = *depth1.ptr<double>(kt2.pt.y, kt2.pt.x);
+        double z4 = *depth1.ptr<double>(kt2.pt.y, kt2.pt.x);
+
+        if (d1.distance < 0.8 * d2.distance
+                && z1 > 0 && z2 > 0 && z3 > 0 && z4 > 0)
+        {
             double dx = kt1.pt.x - kt2.pt.x;
             double dy = kt1.pt.y - kt2.pt.y;
             double dist = sqrt(dx*dx + dy*dy);
-            if (dist < 30){
+            if (dist < 50){
                 //cerr << kt1.pt << " " << kt2.pt << endl;
                 meanDist += dist;
                 vector<DMatch> v;
@@ -54,10 +61,7 @@ double getMatchingsBetween2Frames(Mat &depth1, Mat &rgb1, Mat &rgb2,
                 refPoint3D(0) = (kt2.pt.x - cx) * refPoint3D(2) * 1/focalLenght;
                 refPoint3D(1) = (kt2.pt.y - cy) * refPoint3D(2) * 1/focalLenght;
                 refPoint3D(3) = 1;
-//                cerr << refPoint3D << endl;
-//                cerr << "---------" << endl;
                 Point3f v3d(refPoint3D(0), refPoint3D(1), refPoint3D(2));
-//                cerr << v3d << endl;
                 points1_3d.push_back(v3d);
             }
         }
@@ -75,11 +79,10 @@ double getMatchingsBetween2Frames(Mat &depth1, Mat &rgb1, Mat &rgb2,
     }
     imshow("matchings1", image1);
     imshow("matchings2", image2);
-//    waitKey(0);
     return meanDist/points1.size();
 }
 
-Eigen::Matrix4d coarseRegistration(Mat &depth2, Mat &rgb2, Mat &depth1, Mat &rgb1,
+VectorXd coarseRegistration(Mat &depth2, Mat &rgb2, Mat &depth1, Mat &rgb1,
                                    double focalLenght, double cx, double cy){
 
 
@@ -114,18 +117,22 @@ Eigen::Matrix4d coarseRegistration(Mat &depth2, Mat &rgb2, Mat &depth1, Mat &rgb
     Mat rvec = Mat::zeros(3, 1, CV_64FC1);
     Mat tvec = Mat::zeros(3, 1, CV_64FC1);
     Mat distCoeffs = Mat::zeros(4, 1, CV_64FC1);
-    solvePnPRansac(points1_3d, points1, camMatrix, distCoeffs, rvec, tvec, false, 100, 1.0, 0.99, noArray(), SOLVEPNP_EPNP);
+    solvePnPRansac(points1_3d, points1, camMatrix, distCoeffs, rvec, tvec, false, 100, 0.1, 0.9999, noArray(), SOLVEPNP_EPNP);
 //    Mat R;
 //    Rodrigues(rvec, R);
+//    transf <<                   0, -rvec.at<double>(2,0),  rvec.at<double>(1,0), tvec.at<double>(0,0),
+//             rvec.at<double>(2,0),                     0, -rvec.at<double>(0,0), tvec.at<double>(1,0),
+//            -rvec.at<double>(1,0),  rvec.at<double>(0,0),  0,                    tvec.at<double>(2,0),
+//            0,                  0,                     0,  1;
 
-    transf <<                   0, -rvec.at<double>(2,0),  rvec.at<double>(1,0), tvec.at<double>(0,0),
-             rvec.at<double>(2,0),                     0, -rvec.at<double>(0,0), tvec.at<double>(1,0),
-            -rvec.at<double>(1,0),  rvec.at<double>(0,0),  0,                    tvec.at<double>(2,0),
-            0,                  0,                     0,  1;
+    VectorXd initVector;
+    initVector.setZero(6);
+    initVector(0) = tvec.at<double>(0,0);
+    initVector(1) = tvec.at<double>(1,0);
+    initVector(2) = tvec.at<double>(2,0);
+    initVector(3) = rvec.at<double>(0,0);
+    initVector(4) = rvec.at<double>(1,0);
+    initVector(5) = rvec.at<double>(2,0);
 
-//    transf << R.at<double>(0,0), R.at<double>(0,1), R.at<double>(0,2), tvec.at<double>(0,0),
-//            R.at<double>(1,0), R.at<double>(1,1), R.at<double>(1,2), tvec.at<double>(1,0),
-//            R.at<double>(2,0), R.at<double>(2,1), R.at<double>(2,2), tvec.at<double>(2,0),
-//            0,                 0,                 0,                 1;
-    return transf;
+    return initVector;
 }

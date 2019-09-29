@@ -259,7 +259,7 @@ Mat getNormalWeight(Mat normalMap, Mat depth, PinholeCameraIntrinsic intrinsics,
             double y2 = (width/2 - pos[1]) * (width/2 - pos[1]);
             double radius = sqrt(x2 + y2);
             double wRadius = (1 - radius/maxRadius);
-            wRadius = wRadius < 0.3 ? 0 : 1;
+//            wRadius = wRadius < 0.3 ? 0 : 1;
 //            wRadius = 1;
 //            Vec3d camAxis(px, py, -1);
             Vec3d camAxis(0, 0, -1);
@@ -267,7 +267,7 @@ Mat getNormalWeight(Mat normalMap, Mat depth, PinholeCameraIntrinsic intrinsics,
             pixel = normalize(pixel);
             double uv = pixel.dot(camAxis);
             uv = cos(acos(uv) * angleThres);            
-            filtered.at<double>(pos[0], pos[1]) = uv < angleCut ? 0 : uv * wRadius;
+            filtered.at<double>(pos[0], pos[1]) = uv < angleCut ? 0 : uv;// * wRadius;
         }
     }
     );
@@ -332,6 +332,60 @@ void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
                 *indexMap.ptr<int>(transfR_int, transfC_int) = i;
                 //circle(indexMap, Point(transfC_int, transfR_int), radius, i, -1);
                 //circle(depthMap, Point(transfC_int, transfR_int), radius, value, -1);
+            }
+        }
+    }
+    depthMap.setTo(0, depthMap == 65535);
+    medianBlur(depthMap, depthMap, 3);
+}
+
+void projectPointCloudWithColor(PointCloud pointCloud, double maxDist, double depthScale,
+                       Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics,
+                       Mat &depthMap, Mat &colorMap, double radius = 1){
+
+    int width = intrinsics.width_;
+    int height = intrinsics.height_;
+
+    double cx = intrinsics.GetPrincipalPoint().first;
+    double cy = intrinsics.GetPrincipalPoint().second;
+    double fx = intrinsics.GetFocalLength().first;
+    double fy = intrinsics.GetFocalLength().second;
+
+    depthMap.create(height, width, CV_16UC1);
+    depthMap.setTo(65535);
+    colorMap.create(height, width, CV_8UC3);
+    colorMap.setTo(0);
+
+    for (int i = 0; i < pointCloud.points_.size(); i++) {
+
+        Eigen::Vector3d pcdPoint = pointCloud.points_[i];
+        Eigen::Vector4d refPoint3d;
+        refPoint3d(0) = pcdPoint(0);
+        refPoint3d(1) = pcdPoint(1);
+        refPoint3d(2) = pcdPoint(2);
+        if(refPoint3d(2) > maxDist) continue;
+        refPoint3d(3) = 1;
+        refPoint3d = Rt * refPoint3d;
+        double invTransfZ = 1.0 / refPoint3d(2);
+
+        //******* BEGIN Projection of PointCloud on the image plane ********
+        double transfC = (refPoint3d(0) * fx) * invTransfZ + cx;
+        double transfR = (refPoint3d(1) * fy) * invTransfZ + cy;
+        int transfR_int = static_cast<int>(round(transfR));
+        int transfC_int = static_cast<int>(round(transfC));
+        //******* END Projection of PointCloud on the image plane ********
+
+        //Checks if this pixel projects inside of the image
+        if((transfR_int > 0 && transfR_int < height) &&
+                (transfC_int > 0 && transfC_int < width)) {
+
+            ushort lastZ = *depthMap.ptr<ushort>(transfR_int, transfC_int);
+            ushort value = refPoint3d(2) * depthScale;
+            Vec3b color = Vec3b(pointCloud.colors_[i](2)*255,pointCloud.colors_[i](1)*255, pointCloud.colors_[i](0)*255);
+            if(value < lastZ){
+                *depthMap.ptr<ushort>(transfR_int, transfC_int) = value;
+                //*colorMap.ptr<Vec3b>(transfR_int, transfC_int) = color;
+                circle(colorMap, Point(transfC_int, transfR_int), radius, color, -1);
             }
         }
     }
@@ -601,8 +655,22 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
     return (addInFrontOf + 1.0)/(model->points_.size()+1.0);
 }
 
+void removeMaskBorders(Mat &mask, int sizeX, int sizeY){
+//    cerr << "TIPO: " << mask->type() << endl;
+    int xlenght = mask.cols;
+    int ylenght = mask.rows;
+    for (int y = 0; y < ylenght; ++y) {
+        for (int x = 0; x < xlenght; ++x) {
+            if(x < sizeX || y < sizeY || y > ylenght - sizeY || x > xlenght - sizeX){
+                *mask.ptr<Vec3b>(y, x) = 0;
+            }
+        }
+    }    
+}
+
 Mat applyMaskDepth(Mat depthMap, Mat maskMap){
-    Mat depthClean(depthMap.rows, depthMap.cols, CV_16UC1);
+    Mat depthClean;
+    depthClean = Mat::zeros(depthMap.rows, depthMap.cols, CV_16UC1);
     for (int r = 0; r < depthMap.rows; ++r) {
         for (int c = 0; c < depthMap.cols; ++c) {
             ushort mask = *maskMap.ptr<ushort>(r, c);

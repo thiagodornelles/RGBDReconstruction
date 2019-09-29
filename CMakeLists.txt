@@ -17,6 +17,7 @@ set(project_sources
     visibility.h
     scalableTSDF.h
     initAligner.h
+    groundTruthReader.h
 )
 
 # Find OpenCV
