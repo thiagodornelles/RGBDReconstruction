@@ -25,6 +25,9 @@ using namespace Eigen;
 const int confThresh = 0;
 double angleInsert = 0;
 
+double interpolateDepth(Mat &depth, double &x, double &y, double &z);
+double interpolateIntensityWithDepth(Mat &intensity, Mat &depth, double &x, double &y, double &z);
+
 Image CreateDepthImageFromMat(Mat *matImage, Mat *normalMap = NULL)
 {
     Image open3dImage;
@@ -114,7 +117,7 @@ Mat getNormalMap(Mat &depth, double depthScale, bool dilateBorders = false, doub
     Mat normals = Mat::zeros(depth.rows, depth.cols, CV_32FC3);
     Mat temp;
     depth.convertTo(temp, CV_32FC1, 1.0/depthScale);
-    Mat filteredDepth;    
+    Mat filteredDepth;
     GaussianBlur(temp, filteredDepth, Size(3,3), 1);
     for(int x = 1; x < depth.cols - 1; ++x){
         for(int y = 1; y < depth.rows - 1; ++y){
@@ -254,19 +257,19 @@ Mat getNormalWeight(Mat normalMap, Mat depth, PinholeCameraIntrinsic intrinsics,
                     tan(fovX / 2 * M_PI / 180) * aspectRatio;
             float py = (1 - 2 * ((pos[0] + 0.5) / depth.rows)) *
                     tan(fovY / 2 * M_PI / 180);
-//            cerr << "(" << px << "," << py << ")\n";
+            //            cerr << "(" << px << "," << py << ")\n";
             double x2 = (height/2 - pos[0]) * (height/2 - pos[0]);
             double y2 = (width/2 - pos[1]) * (width/2 - pos[1]);
             double radius = sqrt(x2 + y2);
             double wRadius = (1 - radius/maxRadius);
-//            wRadius = wRadius < 0.3 ? 0 : 1;
-//            wRadius = 1;
-//            Vec3d camAxis(px, py, -1);
+            //            wRadius = wRadius < 0.3 ? 0 : 1;
+            //            wRadius = 1;
+            //            Vec3d camAxis(px, py, -1);
             Vec3d camAxis(0, 0, -1);
             camAxis = normalize(camAxis);
             pixel = normalize(pixel);
             double uv = pixel.dot(camAxis);
-            uv = cos(acos(uv) * angleThres);            
+            uv = cos(acos(uv) * angleThres);
             filtered.at<double>(pos[0], pos[1]) = uv < angleCut ? 0 : uv;// * wRadius;
         }
     }
@@ -300,15 +303,15 @@ void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
 
     for (int i = 0; i < pointCloud.points_.size(); i++) {
 
-//        if(pointCloud.hitCounter_[i] < confThresh && actualFrame + initialFrame > confThresh){
-//            continue;
-//        }
+        //        if(pointCloud.hitCounter_[i] < confThresh && actualFrame + initialFrame > confThresh){
+        //            continue;
+        //        }
 
         Eigen::Vector3d pcdPoint = pointCloud.points_[i];
         Eigen::Vector4d refPoint3d;
         refPoint3d(0) = pcdPoint(0);
         refPoint3d(1) = pcdPoint(1);
-        refPoint3d(2) = pcdPoint(2);        
+        refPoint3d(2) = pcdPoint(2);
         refPoint3d(3) = 1;
         refPoint3d = Rt * refPoint3d;
         double invTransfZ = 1.0 / refPoint3d(2);
@@ -340,8 +343,8 @@ void projectPointCloudExtended(PointCloudExtended pointCloud, double maxDist,
 }
 
 void projectPointCloudWithColor(PointCloud pointCloud, double maxDist, double depthScale,
-                       Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics,
-                       Mat &depthMap, Mat &colorMap, double radius = 1){
+                                Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics,
+                                Mat &depthMap, Mat &colorMap, double radius = 1){
 
     int width = intrinsics.width_;
     int height = intrinsics.height_;
@@ -382,11 +385,11 @@ void projectPointCloudWithColor(PointCloud pointCloud, double maxDist, double de
             ushort lastZ = *depthMap.ptr<ushort>(transfR_int, transfC_int);
             ushort value = refPoint3d(2) * depthScale;
             Vec3b color = Vec3b(pointCloud.colors_[i](2)*255,pointCloud.colors_[i](1)*255, pointCloud.colors_[i](0)*255);
-            if(value < lastZ){
-                *depthMap.ptr<ushort>(transfR_int, transfC_int) = value;
-                //*colorMap.ptr<Vec3b>(transfR_int, transfC_int) = color;
-                circle(colorMap, Point(transfC_int, transfR_int), radius, color, -1);
-            }
+                    if(value < lastZ){
+                    *depthMap.ptr<ushort>(transfR_int, transfC_int) = value;
+                    //*colorMap.ptr<Vec3b>(transfR_int, transfC_int) = color;
+                    circle(colorMap, Point(transfC_int, transfR_int), radius, color, -1);
+        }
         }
     }
     depthMap.setTo(0, depthMap == 65535);
@@ -416,7 +419,7 @@ void projectPointCloud(PointCloud pointCloud, double maxDist, double depthScale,
         Eigen::Vector4d refPoint3d;
         refPoint3d(0) = pcdPoint(0);
         refPoint3d(1) = pcdPoint(1);
-        refPoint3d(2) = pcdPoint(2);        
+        refPoint3d(2) = pcdPoint(2);
         if(refPoint3d(2) > maxDist) continue;
         refPoint3d(3) = 1;
         refPoint3d = Rt * refPoint3d;
@@ -433,7 +436,7 @@ void projectPointCloud(PointCloud pointCloud, double maxDist, double depthScale,
         if((transfR_int > 0 && transfR_int < height) &&
                 (transfC_int > 0 && transfC_int < width)) {
 
-            ushort lastZ = *depthMap.ptr<ushort>(transfR_int, transfC_int);            
+            ushort lastZ = *depthMap.ptr<ushort>(transfR_int, transfC_int);
             ushort value = refPoint3d(2) * depthScale;
 
             if(value < lastZ){
@@ -444,7 +447,7 @@ void projectPointCloud(PointCloud pointCloud, double maxDist, double depthScale,
             }
         }
     }
-    depthMap.setTo(0, depthMap == 65535);    
+    depthMap.setTo(0, depthMap == 65535);
     medianBlur(depthMap, depthMap, 3);
 }
 
@@ -574,9 +577,9 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
     projectPointCloud(*lastFrame, 2, depthScale, transf.inverse(), intrinsics, depth2,
                       lastFrameIdx, radius);
 
-//    imshow("model", depth1*10);
-//    imshow("lastframe", depth2*10);
-//    waitKey(0);
+    //    imshow("model", depth1*10);
+    //    imshow("lastframe", depth2*10);
+    //    waitKey(0);
 
     int addNew = 0;
     int addInFrontOf = 0;
@@ -596,19 +599,18 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
 
             ushort depth = *depth2.ptr<ushort>(r, c);
             double newRadius = depth;
-            if(modIdx >= 0 && model->confidence_[modIdx] > 10){
-                continue;
-            }
+            //if(modIdx >= 0 && model->confidence_[modIdx] > 10){
+            //    continue;
+            //}
             //Two points are into a line of sight from camera
-            if(lastIdx >= 0 && modIdx >= 0){                
+            if(lastIdx >= 0 && modIdx >= 0){
                 Eigen::Vector3d modelPoint = model->points_[modIdx];
                 Eigen::Vector3d modelColor = model->colors_[modIdx];
                 Eigen::Vector3d framePoint = lastFrame->points_[lastIdx];
                 Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
                 //Two points close enough to get fused
                 double diff = abs(modelPoint(2) - framePoint(2));
-
-                if(diff < 0.005){
+                if(diff < 0.02){
                     model->hitCounter_[modIdx]++;
                     double n = model->confidence_[modIdx];
                     model->radius_[modIdx] = newRadius;
@@ -620,7 +622,7 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
                     fused++;
                 }
                 //Far enough to be another point in front of this point
-                else if (modelPoint(2) - framePoint(2) >= 0.02){
+                else if (modelPoint(2) - framePoint(2) >= 0.03){
                     Eigen::Vector3d framePoint = lastFrame->points_[lastIdx];
                     Eigen::Vector3d frameColor = lastFrame->colors_[lastIdx];
                     model->points_.push_back(framePoint);
@@ -656,7 +658,7 @@ double merge(shared_ptr<PointCloudExtended> model, shared_ptr<PointCloud> lastFr
 }
 
 void removeMaskBorders(Mat &mask, int sizeX, int sizeY){
-//    cerr << "TIPO: " << mask->type() << endl;
+    //    cerr << "TIPO: " << mask->type() << endl;
     int xlenght = mask.cols;
     int ylenght = mask.rows;
     for (int y = 0; y < ylenght; ++y) {
@@ -665,7 +667,7 @@ void removeMaskBorders(Mat &mask, int sizeX, int sizeY){
                 *mask.ptr<Vec3b>(y, x) = 0;
             }
         }
-    }    
+    }
 }
 
 Mat applyMaskDepth(Mat depthMap, Mat maskMap){
@@ -674,7 +676,7 @@ Mat applyMaskDepth(Mat depthMap, Mat maskMap){
     for (int r = 0; r < depthMap.rows; ++r) {
         for (int c = 0; c < depthMap.cols; ++c) {
             ushort mask = *maskMap.ptr<ushort>(r, c);
-            if(mask > 0){                
+            if(mask > 0){
                 double d = *depthMap.ptr<ushort>(r, c);
                 *depthClean.ptr<ushort>(r, c) = d;
             }
@@ -714,6 +716,106 @@ void weighting(MatrixXd &residuals, MatrixXd &weights) {
         double data = residuals(i, 0);
         weights(i, 0) = ( (dof + 1.0f) / (dof + lambda * data * data) );
     }
+}
+
+double interpolateIntensityWithDepth(Mat &intensity, Mat &depth, double &x, double &y, double &z)
+{
+    const int x0 = (int) floor(x);
+    const int y0 = (int) floor(y);
+    const int x1 = x0 + 1;
+    const int y1 = y0 + 1;
+
+    if(x1 >= intensity.cols || y1 >= intensity.rows){
+        return 0;
+    }
+
+    const double x1_weight = x - x0;
+    const double x0_weight = 1.0f - x1_weight;
+    const double y1_weight = y - y0;
+    const double y0_weight = 1.0f - y1_weight;
+    const double z_eps = z - 0.05f;
+
+    double val = 0.0f;
+    double sum = 0.0f;
+
+    if(isfinite(depth.at<double>(y0, x0)) && depth.at<double>(y0, x0) > z_eps){
+        val += x0_weight * y0_weight * (double)(intensity.at<uchar>(y0, x0))/255.;
+        sum += x0_weight * y0_weight;
+    }
+
+    if(isfinite(depth.at<double>(y0, x1)) && depth.at<double>(y0, x1) > z_eps){
+        val += x1_weight * y0_weight * (double)(intensity.at<uchar>(y0, x1))/255.;
+        sum += x1_weight * y0_weight;
+    }
+
+    if(isfinite(depth.at<double>(y1, x0)) && depth.at<double>(y1, x0) > z_eps){
+        val += x0_weight * y1_weight * (double)(intensity.at<uchar>(y1, x0))/255.;
+        sum += x0_weight * y1_weight;
+    }
+
+    if(isfinite(depth.at<double>(y1, x1)) && depth.at<double>(y1, x1) > z_eps){
+        val += x1_weight * y1_weight * (double)(intensity.at<uchar>(y1, x1))/255.;
+        sum += x1_weight * y1_weight;
+    }
+
+    if(sum > 0.0f){
+        val /= sum;
+    }
+    else{
+        val = 0;
+    }
+
+    return val;
+}
+
+double interpolateDepth(Mat &depth, double &x, double &y, double &z)
+{
+    const int x0 = (int) floor(x);
+    const int y0 = (int) floor(y);
+    const int x1 = x0 + 1;
+    const int y1 = y0 + 1;
+
+    if(x1 >= depth.cols || y1 >= depth.rows){
+        return 0;
+    }
+
+    const double x1_weight = x - x0;
+    const double x0_weight = 1.0f - x1_weight;
+    const double y1_weight = y - y0;
+    const double y0_weight = 1.0f - y1_weight;
+    const double z_eps = z - 0.05f;
+
+    double val = 0.0f;
+    double sum = 0.0f;
+
+    if(isfinite(depth.at<double>(y0, x0)) && depth.at<double>(y0, x0) > z_eps){
+        val += x0_weight * y0_weight * depth.at<double>(y0, x0);
+        sum += x0_weight * y0_weight;
+    }
+
+    if(isfinite(depth.at<double>(y0, x1)) && depth.at<double>(y0, x1) > z_eps){
+        val += x1_weight * y0_weight * depth.at<double>(y0, x1);
+        sum += x1_weight * y0_weight;
+    }
+
+    if(isfinite(depth.at<double>(y1, x0)) && depth.at<double>(y1, x0) > z_eps){
+        val += x0_weight * y1_weight * depth.at<double>(y1, x0);
+        sum += x0_weight * y1_weight;
+    }
+
+    if(isfinite(depth.at<double>(y1, x1)) && depth.at<double>(y1, x1) > z_eps){
+        val += x1_weight * y1_weight * depth.at<double>(y1, x1);
+        sum += x1_weight * y1_weight;
+    }
+
+    if(sum > 0.0f){
+        val /= sum;
+    }
+    else{
+        val = 0;
+    }
+
+    return val;
 }
 
 #endif

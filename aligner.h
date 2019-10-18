@@ -296,7 +296,8 @@ public:
                         (transfC_int >= 0 && transfC_int < nCols)
                         && refPoint3D(2) > minDist && refPoint3D(2) < maxDist) {
                     double pixInt1 = (double)*(refIntImage.ptr<uchar>(y, x))/255.0;
-                    double pixInt2 = (double)*(actIntImage.ptr<uchar>(transfR_int, transfC_int))/255.0;
+                    //double pixInt2 = (double)*(actIntImage.ptr<uchar>(transfR_int, transfC_int))/255.0;
+                    double pixInt2 = interpolateIntensityWithDepth(actIntImage, actDepImage, transfC, transfR, pz);
                     double pixDep1 = trfPoint3D(2);
                     double pixDep2 = *actDepImage.ptr<double>(transfR_int, transfC_int);
 
@@ -305,14 +306,15 @@ public:
 
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
-                    dInt = dInt > 0.012 ? dInt : 0;
+                    dInt = dInt > 0.05 ? dInt : 0;
                     double dDep = nz * (pixDep2 - pixDep1);                    
                     dDep = pixDep1 < minDist ? 0 : dDep;
                     dDep = pixDep2 < minDist ? 0 : dDep;
                     double diff = abs(dDep);
-                    dDep = diff > 0.5 ? 0 : dDep;
-                    double wDep = *weight.ptr<double>(transfR_int, transfC_int) * 10;
-                    double wInt = 1;
+                    dDep = diff > 1.0 ? 0 : dDep;
+                    double wDep = *weight.ptr<double>(transfR_int, transfC_int) * depth;
+                    double wInt = wDep * color;
+                    wDep *= 10;
                     //double maxCurv = 0.5;
                     //double minCurv = 0.2;
                     //wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
@@ -334,7 +336,7 @@ public:
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wDep * dDep * depth;
 
                     residualImage.at<double>(transfR_int, transfC_int) = wInt * dInt * color;
-                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = wDep * abs(dDep) * depth;
+                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = wDep * abs(dDep) * depth * 1;
                     if(diff > 0.01){
                         count[nThread] += 1;
                     }
@@ -512,28 +514,34 @@ public:
 
             this->lastGradientNorm = DBL_MAX;
             this->sum = DBL_MAX;
-            cerr << "Iniciando de:" << endl;
+            cerr << "Initialized with:" << endl;
             cerr << getPoseExponentialMap2(actualPoseVector6D);
             bool minimized = false;
             double m = 1;
             double a = 1.1;
             double b = 1.1;
+            int countMin = 0;
+            bool color = true;
+            bool depth = true;
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
-                                             pyrWeights[l], pyrNormalMap[l], residuals, jacobians, l);
+                                             pyrWeights[l], pyrNormalMap[l], residuals, jacobians,
+                                             l, color, depth);
 
                 minimized = doSingleIteration(residuals, jacobians, m*lambdas[l], threshold[l]);
-                if (!minimized){
+                if (!minimized){                    
                     m *= 1/a;
                     actualPoseVector6D = bestPoseVector6D;
                 }
-                else{
+                else{                    
+                    countMin++;
                     m *= b;
                 }
             }
+            cerr << "Minimized " << countMin << " times\n" << endl;
         }
         if (refinement){
             cerr << "REFINEMENT\n";
@@ -541,8 +549,9 @@ public:
             int cols = refGray.cols;
             bool minimized = false;
             double m = 1;
-            double a = 1.5;
-            double b = 1.5;
+            double a = 1.1;
+            double b = 1.1;
+            int countMin = 0;
             for (int i = 0; i < 20; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
@@ -550,16 +559,17 @@ public:
                                              tempActGray, tempActDepth,
                                              pyrWeights[0], normalMap,
                         residuals, jacobians, 0, false, true);
-                minimized = doSingleIteration(residuals, jacobians, 10000, threshold[0]);
+                minimized = doSingleIteration(residuals, jacobians, 100000, threshold[0]);
                 if (!minimized){
                     m *= 1/a;                    
                     actualPoseVector6D = bestPoseVector6D;
                 }
-                else{
-                    cerr << "Minimized\n" << endl;
+                else{                    
+                    countMin++;
                     m *= b;
                 }
             }
+            cerr << "Refined " << countMin << " times\n" << endl;
         }
 
         MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);

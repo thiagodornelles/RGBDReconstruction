@@ -11,7 +11,8 @@
 #include <Open3D/Integration/ScalableTSDFVolume.h>
 #include <Open3D/Geometry/Geometry.h>
 #include <Open3D/Geometry/PointCloud.h>
-#include <Open3D/Registration/FastGlobalRegistration.h>
+#include <Open3D/Registration/GlobalOptimization.h>
+#include <Open3D/Registration/PoseGraph.h>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/opencv.hpp>
 
@@ -27,16 +28,19 @@
 using namespace open3d;
 using namespace open3d::integration;
 using namespace open3d::visualization;
+using namespace open3d::registration;
 using namespace std;
 using namespace cv;
 using namespace std::chrono;
 
 bool generateMesh = false;
+bool groundTruth = false;
 double totalAngle = 0;
 double totalTransl = 0;
 double voxelDSAngle = 0;
 double radius = 0.25;
 double errorDepth = 0;
+PoseGraph poseGraph;
 
 int main(int argc, char *argv[]){
 
@@ -47,6 +51,15 @@ int main(int argc, char *argv[]){
     if(argc > 1){
         string genMesh = argv[1];
         if(genMesh == "mesh"){
+            generateMesh = true;
+            if(argc == 5){
+                initFrame = atoi(argv[2]);
+                finalFrame = atoi(argv[3]);
+                step = atoi(argv[4]);
+            }
+        }
+        else if(genMesh == "gt"){
+            groundTruth = true;
             generateMesh = true;
             if(argc == 5){
                 initFrame = atoi(argv[2]);
@@ -77,12 +90,12 @@ int main(int argc, char *argv[]){
     PinholeCameraIntrinsic intrinsics =
             PinholeCameraIntrinsic(640, 480, 538.925221, 538.925221, 316.473843, 243.262082);
     //Kinect 360 unprojection
-//    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 589.322232303107740, 589.849429472609130, 321.140896612950880, 235.563195335248370);
-//    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
+    //    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 589.322232303107740, 589.849429472609130, 321.140896612950880, 235.563195335248370);
+    //    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 517.3, 516.5, 318.6, 255.3);
     //InHand Dataset
-//    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 474.31524658203125, 474.31524658203125, 317.4243469238281, 244.9296875);
+    //    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 474.31524658203125, 474.31524658203125, 317.4243469238281, 244.9296875);
     //Mickey Dataset
-//    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
+    //    PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 525, 525, 319.5, 239.5);
     //CORBS
     //PinholeCameraIntrinsic intrinsics = PinholeCameraIntrinsic(640, 480, 468.60, 468.61, 318.27, 243.99);
     //Kinect v2
@@ -95,17 +108,21 @@ int main(int argc, char *argv[]){
     aligner.depthScale = depthScale;
 
     //0.000125
-    ScalableTSDFVolume tsdf(1.f/depthScale, 0.02, TSDFVolumeColorType::RGB8);
+    ScalableTSDFVolume tsdf(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
     ScalableTSDFVolume tsdfParcial(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
     ScalableTSDFVolume tsdfFinal(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Teddy_Handheld/";
+    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Leopard_Turntable/";
 
     //Output file with poses
-    ofstream posesFile, diffFile;
-    posesFile.open(datasetFolder + "poses.txt");
-    diffFile.open(datasetFolder + "difference.txt");
+    ofstream posesFile, diffFile, poseGraphFile;
+    if(!groundTruth){
+        posesFile.open(datasetFolder + "poses.txt");
+        diffFile.open(datasetFolder + "difference.txt");
+        poseGraphFile.open(datasetFolder + "poseGraph.txt");
+    }
     //groundtruth reader
+    vector<Matrix4d> posesRefined = readGTFile(datasetFolder + "poseGraph.txt");
     vector<Matrix4d> gt_poses = readGTFile(datasetFolder + "markerboard_poses.txt");
 
     vector<string> depthFiles, rgbFiles, omaskFiles, tmaskFiles;
@@ -118,7 +135,7 @@ int main(int argc, char *argv[]){
     shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>();
 
     vector< shared_ptr<PointCloud> > parcialPcds;
-    vector<Matrix4d> parcialPcdsPoses;    
+    vector<Matrix4d> parcialPcdsPoses;
 
     VectorXd lastPose;
     bool lastValid = true;
@@ -131,8 +148,10 @@ int main(int argc, char *argv[]){
         int i1 = i;
         int i2 = i1 + step;
 
-        posesFile << i1 << endl;
-        posesFile << actualPose << endl;        
+        if(!groundTruth){
+            posesFile << i1 << endl;
+            posesFile << actualPose << endl;
+        }
 
         cerr << "diff Estimated - GT" << endl;
         cerr << (actualPose - gt_poses[i]).cwiseAbs() << endl;
@@ -167,8 +186,8 @@ int main(int argc, char *argv[]){
         bitwise_and(rgb1, mask1, rgb1);
         bitwise_and(rgb2, mask2, rgb2);
         Mat depth2, depth1;
-        Mat index2;        
-        if (i == initFrame){            
+        Mat index2;
+        if (i == initFrame){
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
             depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
             depth2 = applyMaskDepth(depth2, mask2);
@@ -206,8 +225,8 @@ int main(int argc, char *argv[]){
         cv_extend::bilateralFilter(gray2, gray2, 5, 3);
         cv_extend::bilateralFilter(depth1, depth1, 5, 3);
         cv_extend::bilateralFilter(depth2, depth2, 5, 3);
-//        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(3, 3)));
-//        erode(depth2, depth2, getStructuringElement(MORPH_RECT, Size(3, 3)));
+        //        erode(depth1, depth1, getStructuringElement(MORPH_RECT, Size(3, 3)));
+        //        erode(depth2, depth2, getStructuringElement(MORPH_RECT, Size(3, 3)));
 
         Mat grayOut, depthOut;
         hconcat(gray1, gray2, grayOut);
@@ -227,9 +246,9 @@ int main(int argc, char *argv[]){
         imshow("normals", maskNormals);
 
         Mat depthTmp2;
-        depth2.convertTo(depthTmp2, CV_64FC1, 1.0/depthScale);        
+        depth2.convertTo(depthTmp2, CV_64FC1, 1.0/depthScale);
         Mat normalMap2 = getNormalMapFromDepth(depthTmp2, intrinsics, 0, depthScale);
-        Mat model = getNormalWeight(normalMap2, depthTmp2, intrinsics);        
+        Mat model = getNormalWeight(normalMap2, depthTmp2, intrinsics);
         imshow("previewNormals", model);
 
         Image rgb = CreateRGBImageFromMat(&rgb1);
@@ -266,51 +285,55 @@ int main(int argc, char *argv[]){
                   intrinsics, depthScale, totalAngle, maskNormals);
             auto stop = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(stop - start);
-            cerr << "Merge time: " << duration.count()/1000000.f << endl;            
+            cerr << "Merge time: " << duration.count()/1000000.f << endl;
         }
 
-        //************ INITIAL ALIGNMENT ************//
-        double focal = intrinsics.GetFocalLength().first;
-        double cx = intrinsics.GetPrincipalPoint().first;
-        double cy = intrinsics.GetPrincipalPoint().second;
+        VectorXd pose;
+        if(!groundTruth){            
+            //************ INITIAL ALIGNMENT ************//
+            double focal = intrinsics.GetFocalLength().first;
+            double cx = intrinsics.GetPrincipalPoint().first;
+            double cy = intrinsics.GetPrincipalPoint().second;
 
-        VectorXd pose = coarseRegistration(depthTmp1, rgb1, depthTmp2, rgb2, focal, cx, cy);
-        aligner.setInitialPoseVector(pose);
-        cerr << aligner.getPoseExponentialMap2(pose).inverse() << endl;
-        cerr << "--------" << endl;
-        //************ INITIAL ALIGNMENT ************//
+            pose = coarseRegistration(depthTmp1, rgb1, depthTmp2, rgb2, focal, cx, cy);
+            aligner.setInitialPoseVector(pose);
+            cerr << aligner.getPoseExponentialMap2(pose).inverse() << endl;
+            cerr << "--------" << endl;
+            //************ INITIAL ALIGNMENT ************//
 
-        //************ REFINE ALIGNMENT ************//
-        auto start = high_resolution_clock::now();
-        std::pair<VectorXd, double> result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, true);
-        pose = result.first;
-        errorDepth = result.second;
-        auto stop = high_resolution_clock::now();
-        cerr << "Obtida transf:\n" << aligner.getPoseExponentialMap2(pose).inverse() << endl;
-
+            //************ REFINE ALIGNMENT ************//
+            auto start = high_resolution_clock::now();
+            std::pair<VectorXd, double> result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
+            pose = result.first;
+            errorDepth = result.second;
+            auto stop = high_resolution_clock::now();
+            cerr << "Obtida transf:\n" << aligner.getPoseExponentialMap2(pose).inverse() << endl;
+        }
         //GroundTruth tests
-//        prevTransf = transf;
-//        transf = gt_poses[i];
-//        actualPose = transf;
+        else{
+            prevTransf = transf;
+            transf = posesRefined[i+1];
+            actualPose = transf;
+        }
 
         if (generateMesh){
             tsdf.Integrate(*rgbdImage, intrinsics, transf.inverse());
-            //tsdfParcial.Integrate(*rgbdImage, intrinsics, transf.inverse());
         }
 
-        t = aligner.getPoseExponentialMap2(pose).inverse();
-        prevTransf = transf;
-        transf = transf * t;
-        actualPose = actualPose * t;
+        if(!groundTruth){
+            t = aligner.getPoseExponentialMap2(pose).inverse();
+            prevTransf = transf;
+            transf = transf * t;
+            actualPose = actualPose * t;
+        }
 
-        auto duration = duration_cast<microseconds>(stop - start);
-        cerr << "Time elapsed: " << duration.count()/1000000.f << endl;
-        cerr << "Frame : " << i << endl;
+        //auto duration = duration_cast<microseconds>(stop - start);
+        //cerr << "Time elapsed: " << duration.count()/1000000.f << endl;
+        //cerr << "Frame : " << i << endl;
+        //cerr << "TRANSLATION: " << totalTransl << endl;
+        //cerr << "ANGLE: " << totalAngle << endl;
 
-        cerr << "TRANSLATION: " << totalTransl << endl;
-        cerr << "ANGLE: " << totalAngle << endl;
-
-        char key = waitKey(100);        
+        char key = waitKey(100);
         if(i == finalFrame || key == 'z'){
             Visualizer vis;
             vis.CreateVisualizerWindow("Visualization", 800, 600);
@@ -336,8 +359,8 @@ int main(int argc, char *argv[]){
                 */
                 mesh = tsdf.ExtractTriangleMesh();
                 vis.AddGeometry({mesh});
-//                pcd = tsdf.ExtractPointCloud();
-//                vis.AddGeometry({pcd});
+                //pcd = tsdf.ExtractPointCloud();
+                //vis.AddGeometry({pcd});
             }
             else{
                 vis.AddGeometry({pcdExtended});
@@ -352,11 +375,45 @@ int main(int argc, char *argv[]){
         if(key == 27){
             break;
         }
+
+        if(!groundTruth){
+            //************ POSE GRAPH ************//
+            //Final Frame
+            if(i + step >= depthFiles.size() - 1){
+                poseGraph.nodes_.push_back(PoseGraphNode(actualPose.inverse()));
+                poseGraph.edges_.push_back(PoseGraphEdge(initFrame, i, t, Eigen::Matrix6d::Identity(), false));
+
+                GlobalOptimizationConvergenceCriteria criteria;
+                GlobalOptimizationOption option;
+                option.edge_prune_threshold_ = 0.25;
+                option.reference_node_ = initFrame;
+                GlobalOptimizationLevenbergMarquardt optimization_method;
+                GlobalOptimization(poseGraph, optimization_method, criteria, option);
+
+                cerr << "Writing pose Graph results:" << endl;
+                poseGraphFile << "0" << endl;
+                poseGraphFile << Matrix4d::Identity() << endl;
+                for (int i = 0; i < poseGraph.nodes_.size(); ++i) {
+                    poseGraphFile << i+1 << endl;
+                    poseGraphFile << poseGraph.nodes_[i].pose_ << endl;
+                }
+            }
+            else{
+                poseGraph.nodes_.push_back(PoseGraphNode(actualPose.inverse()));
+                poseGraph.edges_.push_back(PoseGraphEdge(i+1, i, t, Eigen::Matrix6d::Identity(), false));
+            }
+            //************ POSE GRAPH ************//
+        }
     }
+
     posesFile << depthFiles.size()-1 << endl;
     posesFile << actualPose << endl;
     posesFile.close();
     diffFile.close();
+    if(groundTruth){
+        poseGraphFile.close();
+    }
+
     if (generateMesh){
         mesh->ComputeTriangleNormals();
         mesh = tsdf.ExtractTriangleMesh();
