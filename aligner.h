@@ -296,10 +296,11 @@ public:
                         (transfC_int >= 0 && transfC_int < nCols)
                         && refPoint3D(2) > minDist && refPoint3D(2) < maxDist) {
                     double pixInt1 = (double)*(refIntImage.ptr<uchar>(y, x))/255.0;
-                    //double pixInt2 = (double)*(actIntImage.ptr<uchar>(transfR_int, transfC_int))/255.0;
                     double pixInt2 = interpolateIntensityWithDepth(actIntImage, actDepImage, transfC, transfR, pz);
-                    double pixDep1 = trfPoint3D(2);
-                    double pixDep2 = *actDepImage.ptr<double>(transfR_int, transfC_int);
+                    //double pixInt2 = (double)*(actIntImage.ptr<uchar>(transfR_int, transfC_int))/255.0;
+                    double pixDep1 = interpolateDepth(refDepImage, transfC, transfR, trfPoint3D(2));
+                    double pixDep2 = interpolateDepth(actDepImage, transfC, transfR, pz);
+                    //double pixDep2 = *actDepImage.ptr<double>(transfR_int, transfC_int);
 
                     //Assign the pixel residual and jacobian to its corresponding row
                     uint i = nCols * y + x;

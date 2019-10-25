@@ -275,10 +275,10 @@ int main(int argc, char *argv[]){
         angle = isnan(angle) ? 0 : angle;
         angle *= 180/M_PI;
 
-        cerr << "ang: " << angle << "transl:" << transl << endl;
         totalAngle += angle;
         totalTransl += transl;
         voxelDSAngle += angle;
+        cerr << "angle: " << totalAngle << "transl:" << totalTransl << endl;
 
         if (!generateMesh){
             actualPointCloud->Transform(transf);
@@ -313,6 +313,7 @@ int main(int argc, char *argv[]){
             errorDepth = result.second;
             auto stop = high_resolution_clock::now();
             cerr << "Obtida transf:\n" << TransformVector6dToMatrix4d(pose).inverse() << endl;
+            //************ REFINE ALIGNMENT ************//
         }
         //GroundTruth tests
         else{
