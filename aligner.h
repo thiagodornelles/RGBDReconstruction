@@ -26,7 +26,7 @@ public:
     VectorXd actualPoseVector6D;
     VectorXd bestPoseVector6D;
 
-    PinholeCameraIntrinsic intrinsecs;
+    PinholeCameraIntrinsic intrinsics;
 
     Mat sourceIntensityImage;
     Mat sourceDepthImage;
@@ -50,7 +50,7 @@ public:
     Aligner(PinholeCameraIntrinsic intrinsecs){
         actualPoseVector6D.setZero(6);
         bestPoseVector6D.setZero(6);
-        this->intrinsecs = intrinsecs;
+        this->intrinsics = intrinsecs;
     }
 
     VectorXd getPose6D(){
@@ -102,7 +102,7 @@ public:
     double computeResidualsAndJacobians(Mat &refIntImage, Mat &refDepImage,
                                         Mat &actIntImage, Mat &actDepImage,
                                         Mat &weight, Mat &normalMap,
-                                        MatrixXd &residuals, MatrixXd &jacobians,
+                                        MatrixXd &residuals, MatrixXd &jacobians, double depthWeight,
                                         int level, bool color = true, bool depth = true)
     {
         double scaleFactor = 1.0 / pow(2, level);
@@ -140,14 +140,14 @@ public:
         //        double roll = actualPoseVector6D(5);
 
         //Intrinsecs
-        double cx = scaleFactor * intrinsecs.GetPrincipalPoint().first;
-        double cy = scaleFactor * intrinsecs.GetPrincipalPoint().second;
-        double fx = scaleFactor * intrinsecs.GetFocalLength().first;
-        double fy = scaleFactor * intrinsecs.GetFocalLength().second;
+        double cx = scaleFactor * intrinsics.GetPrincipalPoint().first;
+        double cy = scaleFactor * intrinsics.GetPrincipalPoint().second;
+        double fx = scaleFactor * intrinsics.GetFocalLength().first;
+        double fy = scaleFactor * intrinsics.GetFocalLength().second;
 
         //Matrix |R|t| from 6D vector
         //        Matrix4d Rt = getMatrixRtFromPose6D(actualPoseVector6D);
-        Matrix4d Rt = getPoseExponentialMap2(actualPoseVector6D);
+        Matrix4d Rt = TransformVector6dToMatrix4d(actualPoseVector6D);
         //        cerr << Rt << endl;
 
         //Calculation of jacobians and residuals
@@ -203,7 +203,7 @@ public:
 
                 double px = refPoint3D(0);
                 double py = refPoint3D(1);
-                double pz = refPoint3D(2);                
+                double pz = refPoint3D(2);
 
                 //Derivative w.r.t x
                 jacobianRt(0,0) = 1.;
@@ -307,14 +307,14 @@ public:
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
                     dInt = dInt > 0.05 ? dInt : 0;
-                    double dDep = nz * (pixDep2 - pixDep1);                    
+                    double dDep = nz * (pixDep2 - pixDep1);
                     dDep = pixDep1 < minDist ? 0 : dDep;
                     dDep = pixDep2 < minDist ? 0 : dDep;
                     double diff = abs(dDep);
                     dDep = diff > 1.0 ? 0 : dDep;
                     double wDep = *weight.ptr<double>(transfR_int, transfC_int) * depth;
                     double wInt = wDep * color;
-                    wDep *= 10;
+                    wDep *= depthWeight;
                     //double maxCurv = 0.5;
                     //double minCurv = 0.2;
                     //wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
@@ -424,15 +424,15 @@ public:
     }
 
     bool doSingleIteration(MatrixXd &residuals, MatrixXd &jacobians,
-                           double lambda, double threshold){
+                           double lambda, double speed){
 
-        //        double chi = residuals.squaredNorm();
-        //        cerr << "chi squared " << chi << endl;
-        //        double thresh = 500;
-        //        if(chi > thresh){
-        //            cerr << "Escalando o erro " << endl;
-        //            residuals *= sqrt(5/chi);
-        //        }
+//        double chi = residuals.squaredNorm();
+//        cerr << "chi squared " << chi << endl;
+//        double thresh = 10;
+//        if(chi > thresh){
+//            cerr << "Escalando o erro " << endl;
+//            residuals *= sqrt(10/chi);
+//        }
 
         //Weighting of residuals
         //        MatrixXd weights;
@@ -444,21 +444,21 @@ public:
         MatrixXd hessian = jacobians.transpose() * jacobians;
         MatrixXd identity;
         identity.setZero(6,6);
-        identity(0,0) = hessian(0,0);
-        identity(1,1) = hessian(1,1);
-        identity(2,2) = hessian(2,2);
-        identity(3,3) = hessian(3,3);
-        identity(4,4) = hessian(4,4);
-        identity(5,5) = hessian(5,5);
-        //        identity(0,0) = 1;
-        //        identity(1,1) = 1;
-        //        identity(2,2) = 1;
-        //        identity(3,3) = 1;
-        //        identity(4,4) = 1;
-        //        identity(5,5) = 1;
+//        identity(0,0) = hessian(0,0);
+//        identity(1,1) = hessian(1,1);
+//        identity(2,2) = hessian(2,2);
+//        identity(3,3) = hessian(3,3);
+//        identity(4,4) = hessian(4,4);
+//        identity(5,5) = hessian(5,5);
+        identity(0,0) = 1;
+        identity(1,1) = 1;
+        identity(2,2) = 1;
+        identity(3,3) = 1;
+        identity(4,4) = 1;
+        identity(5,5) = 1;
         hessian += lambda * identity;
-        //        actualPoseVector6D -= hessian.ldlt().solve(gradients);
-        actualPoseVector6D -= hessian.inverse() * gradients;
+        actualPoseVector6D -= speed * hessian.ldlt().solve(gradients);
+        //actualPoseVector6D -= hessian.inverse() * gradients;
         //Gets best transform until now
         double gradientNorm = gradients.norm();
         if(gradientNorm < lastGradientNorm){
@@ -467,6 +467,19 @@ public:
             return true;
         }
         return false;
+    }
+
+    std::pair<VectorXd, double> getPoseTransformOpen3d(shared_ptr<RGBDImage> source,
+                                                       shared_ptr<RGBDImage> target,
+                                                       Matrix4d odo_init){
+        std::tuple<bool, Eigen::Matrix4d, Eigen::Matrix6d> rgbd_odo =
+                odometry::ComputeRGBDOdometry(
+                    *source, *target, intrinsics, odo_init,
+                    odometry::RGBDOdometryJacobianFromHybridTerm(),
+                    odometry::OdometryOption());
+        Matrix4d trf = get<1>(rgbd_odo);
+        VectorXd out = TransformMatrix4dToVector6d(trf);
+        return make_pair(out, 1);
     }
 
     std::pair<VectorXd, double> getPoseTransform(Mat &refGray, Mat &refDepth, Mat &actGray, Mat &actDepth,
@@ -478,19 +491,19 @@ public:
         actDepth.convertTo(actDepth, CV_64FC1, 1.f/depthScale);
         refDepth.convertTo(refDepth, CV_64FC1, 1.f/depthScale);
 
-        Mat normalMap = getNormalMapFromDepth(refDepth, intrinsecs, 0, depthScale);
-        Mat normalsWeight = getNormalWeight(normalMap, refDepth, intrinsecs);
+        Mat normalMap = getNormalMapFromDepth(refDepth, intrinsics, 0, depthScale);
+        Mat normalsWeight = getNormalWeight(normalMap, refDepth, intrinsics);
         Mat pyrWeights[4];
         pyrWeights[0] = normalsWeight;
-        resize(normalsWeight, pyrWeights[1], Size(cols/2, rows/2), 0, 0, INTER_LINEAR_EXACT);
-        resize(normalsWeight, pyrWeights[2], Size(cols/4, rows/4), 0, 0, INTER_LINEAR_EXACT);
-        resize(normalsWeight, pyrWeights[3], Size(cols/8, rows/8), 0, 0, INTER_LINEAR_EXACT);
+        resize(normalsWeight, pyrWeights[1], Size(cols/2, rows/2), 0, 0, INTER_NEAREST);
+        resize(normalsWeight, pyrWeights[2], Size(cols/4, rows/4), 0, 0, INTER_NEAREST);
+        resize(normalsWeight, pyrWeights[3], Size(cols/8, rows/8), 0, 0, INTER_NEAREST);
 
         Mat pyrNormalMap[4];
         pyrNormalMap[0] = normalMap;
-        pyrNormalMap[1] = getNormalMapFromDepth(refDepth, intrinsecs, 1, depthScale);
-        pyrNormalMap[2] = getNormalMapFromDepth(refDepth, intrinsecs, 2, depthScale);
-        pyrNormalMap[3] = getNormalMapFromDepth(refDepth, intrinsecs, 3, depthScale);
+        pyrNormalMap[1] = getNormalMapFromDepth(refDepth, intrinsics, 1, depthScale);
+        pyrNormalMap[2] = getNormalMapFromDepth(refDepth, intrinsics, 2, depthScale);
+        pyrNormalMap[3] = getNormalMapFromDepth(refDepth, intrinsics, 3, depthScale);
 
         Mat tempRefGray, tempActGray;
         Mat tempRefDepth, tempActDepth;
@@ -500,9 +513,9 @@ public:
         double threshold[] = { 80, 160, 160, 160 };
         int initialPyr = 0;
         for (int l = initialPyr; l >= 0; l--) {
-            if(l != initialPyr){                
+            if(l != initialPyr){
                 actualPoseVector6D = bestPoseVector6D;
-            }            
+            }
             int level = pow(2, l);
             int rows = refGray.rows/level;
             int cols = refGray.cols/level;
@@ -515,9 +528,9 @@ public:
             this->lastGradientNorm = DBL_MAX;
             this->sum = DBL_MAX;
             cerr << "Initialized with:" << endl;
-            cerr << getPoseExponentialMap2(actualPoseVector6D);
-            bool minimized = false;
-            double m = 1;
+            cerr << TransformVector6dToMatrix4d(actualPoseVector6D);
+            bool minimized = false;                        
+            double m = 1;            
             double a = 1.1;
             double b = 1.1;
             int countMin = 0;
@@ -525,13 +538,13 @@ public:
             bool depth = true;
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
-                MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
+                MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);                
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
                                              pyrWeights[l], pyrNormalMap[l], residuals, jacobians,
-                                             l, color, depth);
+                                             10, l, color, depth);
 
-                minimized = doSingleIteration(residuals, jacobians, m*lambdas[l], threshold[l]);
+                minimized = doSingleIteration(residuals, jacobians, m*lambdas[l], 1);
                 if (!minimized){                    
                     m *= 1/a;
                     actualPoseVector6D = bestPoseVector6D;
@@ -543,40 +556,12 @@ public:
             }
             cerr << "Minimized " << countMin << " times\n" << endl;
         }
-        if (refinement){
-            cerr << "REFINEMENT\n";
-            int rows = refGray.rows;
-            int cols = refGray.cols;
-            bool minimized = false;
-            double m = 1;
-            double a = 1.1;
-            double b = 1.1;
-            int countMin = 0;
-            for (int i = 0; i < 20; ++i) {
-                MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
-                MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
-                computeResidualsAndJacobians(tempRefGray, tempRefDepth,
-                                             tempActGray, tempActDepth,
-                                             pyrWeights[0], normalMap,
-                        residuals, jacobians, 0, false, true);
-                minimized = doSingleIteration(residuals, jacobians, 100000, threshold[0]);
-                if (!minimized){
-                    m *= 1/a;                    
-                    actualPoseVector6D = bestPoseVector6D;
-                }
-                else{                    
-                    countMin++;
-                    m *= b;
-                }
-            }
-            cerr << "Refined " << countMin << " times\n" << endl;
-        }
 
         MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
         MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
         double outlierRatio = computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                                            tempActGray, tempActDepth,
-                                                           pyrWeights[0], normalMap, residuals, jacobians, 0);
+                                                           pyrWeights[0], normalMap, residuals, jacobians, 10, 0);
         return make_pair(bestPoseVector6D, outlierRatio);
     }
 };

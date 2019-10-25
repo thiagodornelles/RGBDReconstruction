@@ -20,7 +20,7 @@ double getMatchingsBetween2Frames(Mat &depth1, Mat &rgb1, Mat &rgb2,
     Mat desc1, desc2;
     vector< vector<DMatch> > matches;
 
-    Ptr<Feature2D> orb = ORB::create(3000);
+    Ptr<Feature2D> orb = ORB::create(4000);
     Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create("BruteForce-Hamming");
 
     orb->detectAndCompute(rgb1, noArray(), keyPoints1, desc1, false);

@@ -112,7 +112,7 @@ int main(int argc, char *argv[]){
     ScalableTSDFVolume tsdfParcial(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
     ScalableTSDFVolume tsdfFinal(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Leopard_Turntable/";
+    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Teddy_Turntable/";
 
     //Output file with poses
     ofstream posesFile, diffFile, poseGraphFile;
@@ -203,15 +203,7 @@ int main(int argc, char *argv[]){
                 Mat color;
                 projectPointCloudWithColor(*tsdf.ExtractPointCloud(), maxDistProjection, depthScale,
                                            transf.inverse(), intrinsics, depth2, color);
-                imshow("previewModel", color);
-                /*
-                if(i % 30 == 0 || i == depthFiles.size()-2){
-                    //Storing PointCloud from TSDF and its global pose
-                    parcialPcds.push_back(tsdfParcial.ExtractPointCloud());
-                    parcialPcdsPoses.push_back(transf.inverse());
-                    tsdfParcial.Reset();
-                }
-                */
+                imshow("previewModel", color);                
             }
         }
         depth1 = applyMaskDepth(depth1, mask1);
@@ -251,10 +243,20 @@ int main(int argc, char *argv[]){
         Mat model = getNormalWeight(normalMap2, depthTmp2, intrinsics);
         imshow("previewNormals", model);
 
+
         Image rgb = CreateRGBImageFromMat(&rgb1);
         Image depth = CreateDepthImageFromMat(&depth1, NULL);
         rgbdImage = CreateRGBDImageFromColorAndDepth(rgb, depth, depthScale, 1.5, false);
+
         shared_ptr<PointCloud> actualPointCloud = CreatePointCloudFromRGBDImage(*rgbdImage, intrinsics, initCam);
+
+        //Images to Open3D odometry
+        shared_ptr<Image> rgbImage1 = CreateImageFromFile(rgbPath1);
+        shared_ptr<Image> depthImage1 = CreateImageFromFile(depthPath1);
+        shared_ptr<RGBDImage> rgbdImage1 = CreateRGBDImageFromColorAndDepth(*rgbImage1, *depthImage1, depthScale, 1.5, true);
+        shared_ptr<Image> rgbImage2 = CreateImageFromFile(rgbPath2);
+        shared_ptr<Image> depthImage2 = CreateImageFromFile(depthPath2);
+        shared_ptr<RGBDImage> rgbdImage2 = CreateRGBDImageFromColorAndDepth(*rgbImage2, *depthImage2, depthScale, 1.5, true);
 
         Vector3d prevTranslation(prevTransf(0,3), prevTransf(1,3), prevTransf(2,3));
 
@@ -297,17 +299,20 @@ int main(int argc, char *argv[]){
 
             pose = coarseRegistration(depthTmp1, rgb1, depthTmp2, rgb2, focal, cx, cy);
             aligner.setInitialPoseVector(pose);
-            cerr << aligner.getPoseExponentialMap2(pose).inverse() << endl;
+            cerr << TransformVector6dToMatrix4d(pose).inverse();
             cerr << "--------" << endl;
             //************ INITIAL ALIGNMENT ************//
 
             //************ REFINE ALIGNMENT ************//
             auto start = high_resolution_clock::now();
+
+            //std::pair<VectorXd, double> result = aligner.getPoseTransformOpen3d(rgbdImage1, rgbdImage2,
+            //                                                                    aligner.getPoseExponentialMap2(pose).inverse());
             std::pair<VectorXd, double> result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
             pose = result.first;
             errorDepth = result.second;
             auto stop = high_resolution_clock::now();
-            cerr << "Obtida transf:\n" << aligner.getPoseExponentialMap2(pose).inverse() << endl;
+            cerr << "Obtida transf:\n" << TransformVector6dToMatrix4d(pose).inverse() << endl;
         }
         //GroundTruth tests
         else{
@@ -321,7 +326,8 @@ int main(int argc, char *argv[]){
         }
 
         if(!groundTruth){
-            t = aligner.getPoseExponentialMap2(pose).inverse();
+            t = TransformVector6dToMatrix4d(pose).inverse();
+            //t = aligner.getPoseExponentialMap2(pose).inverse();
             prevTransf = transf;
             transf = transf * t;
             actualPose = actualPose * t;
@@ -342,25 +348,9 @@ int main(int argc, char *argv[]){
             vis.GetRenderOption().show_coordinate_frame_ = false;
             vis.GetRenderOption().mesh_show_back_face_ = true;
             vis.GetViewControl().SetViewMatrices(initCam);
-            if(generateMesh){
-                //Generating final model
-                /*
-                tsdfFinal.Reset();
-                for (int i = 0; i < parcialPcdsPoses.size(); ++i) {
-                    Mat depthTSDF, colorTSDF;
-                    projectPointCloudWithColor(*parcialPcds[i], 2.0, depthScale, parcialPcdsPoses[i],
-                                               intrinsics, depthTSDF, colorTSDF);
-                    Image rgb = CreateRGBImageFromMat(&colorTSDF);
-                    Image depth = CreateDepthImageFromMat(&depthTSDF, NULL);
-                    shared_ptr<RGBDImage> rgbdImage;
-                    rgbdImage = CreateRGBDImageFromColorAndDepth(rgb, depth, depthScale, 2.0, false);
-                    tsdfFinal.Integrate(*rgbdImage, intrinsics, parcialPcdsPoses[i]);
-                }
-                */
+            if(generateMesh){                
                 mesh = tsdf.ExtractTriangleMesh();
-                vis.AddGeometry({mesh});
-                //pcd = tsdf.ExtractPointCloud();
-                //vis.AddGeometry({pcd});
+                vis.AddGeometry({mesh});                
             }
             else{
                 vis.AddGeometry({pcdExtended});

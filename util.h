@@ -718,6 +718,37 @@ void weighting(MatrixXd &residuals, MatrixXd &weights) {
     }
 }
 
+
+Eigen::Matrix4d TransformVector6dToMatrix4d(Eigen::VectorXd &input) {
+    Eigen::Matrix4d output;
+    output.setIdentity();
+    output.block<3, 3>(0, 0) =
+            (Eigen::AngleAxisd(input(5), Eigen::Vector3d::UnitZ()) *
+             Eigen::AngleAxisd(input(4), Eigen::Vector3d::UnitY()) *
+             Eigen::AngleAxisd(input(3), Eigen::Vector3d::UnitX()))
+                    .matrix();
+    output.block<3, 1>(0, 3) = input.block<3, 1>(0, 0);
+    return output;
+}
+
+Eigen::VectorXd TransformMatrix4dToVector6d(Eigen::Matrix4d &input) {
+    Eigen::VectorXd output;
+    output.setZero(6);
+    Eigen::Matrix3d R = input.block<3, 3>(0, 0);
+    double sy = sqrt(R(0, 0) * R(0, 0) + R(1, 0) * R(1, 0));
+    if (!(sy < 1e-6)) {
+        output(3) = atan2(R(2, 1), R(2, 2));
+        output(4) = atan2(-R(2, 0), sy);
+        output(5) = atan2(R(1, 0), R(0, 0));
+    } else {
+        output(3) = atan2(-R(1, 2), R(1, 1));
+        output(4) = atan2(-R(2, 0), sy);
+        output(5) = 0;
+    }
+    output.block<3, 1>(0, 0) = input.block<3, 1>(0, 3);
+    return output;
+}
+
 double interpolateIntensityWithDepth(Mat &intensity, Mat &depth, double &x, double &y, double &z)
 {
     const int x0 = (int) floor(x);
