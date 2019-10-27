@@ -35,6 +35,7 @@ using namespace std::chrono;
 
 bool generateMesh = false;
 bool groundTruth = false;
+bool isOpen3D = false;
 double totalAngle = 0;
 double totalTransl = 0;
 double voxelDSAngle = 0;
@@ -52,11 +53,13 @@ int main(int argc, char *argv[]){
         string genMesh = argv[1];
         if(genMesh == "mesh"){
             generateMesh = true;
-            if(argc == 5){
-                initFrame = atoi(argv[2]);
-                finalFrame = atoi(argv[3]);
-                step = atoi(argv[4]);
-            }
+            initFrame = atoi(argv[2]);
+            finalFrame = atoi(argv[3]);
+            step = atoi(argv[4]);
+            if(argc == 6){
+                string open3dArg = argv[5];
+                isOpen3D = open3dArg == "open3d" ? true : false;
+            }            
         }
         else if(genMesh == "gt"){
             groundTruth = true;
@@ -112,7 +115,8 @@ int main(int argc, char *argv[]){
     ScalableTSDFVolume tsdfParcial(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
     ScalableTSDFVolume tsdfFinal(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Teddy_Turntable/";
+//    string datasetFolder = "/Users/thiago/Datasets/3d-printed-dataset/Kinect_Teddy_Turntable/";
+    string datasetFolder = "/Users/thiago/Datasets/3d-printed-dataset/Kinect_Teddy_Handheld/";
 
     //Output file with poses
     ofstream posesFile, diffFile, poseGraphFile;
@@ -187,10 +191,10 @@ int main(int argc, char *argv[]){
         bitwise_and(rgb2, mask2, rgb2);
         Mat depth2, depth1;
         Mat index2;
-        if (i == initFrame){
+        if (i == initFrame || isOpen3D){
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
             depth2 = imread(depthPath2, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
-            depth2 = applyMaskDepth(depth2, mask2);
+            depth2 = applyMaskDepth(depth2, mask2);            
         }
         else{
             depth1 = imread(depthPath1, CV_LOAD_IMAGE_ANYCOLOR | CV_LOAD_IMAGE_ANYDEPTH);
@@ -252,11 +256,11 @@ int main(int argc, char *argv[]){
 
         //Images to Open3D odometry
         shared_ptr<Image> rgbImage1 = CreateImageFromFile(rgbPath1);
-        shared_ptr<Image> depthImage1 = CreateImageFromFile(depthPath1);
-        shared_ptr<RGBDImage> rgbdImage1 = CreateRGBDImageFromColorAndDepth(*rgbImage1, *depthImage1, depthScale, 1.5, true);
+        Image depthImage1 = CreateDepthImageFromMat(&depth1, NULL);
+        shared_ptr<RGBDImage> rgbdImage1 = CreateRGBDImageFromColorAndDepth(*rgbImage1, depthImage1, depthScale, 1.5, true);
         shared_ptr<Image> rgbImage2 = CreateImageFromFile(rgbPath2);
-        shared_ptr<Image> depthImage2 = CreateImageFromFile(depthPath2);
-        shared_ptr<RGBDImage> rgbdImage2 = CreateRGBDImageFromColorAndDepth(*rgbImage2, *depthImage2, depthScale, 1.5, true);
+        Image depthImage2 = CreateDepthImageFromMat(&depth2, NULL);
+        shared_ptr<RGBDImage> rgbdImage2 = CreateRGBDImageFromColorAndDepth(*rgbImage2, depthImage2, depthScale, 1.5, true);
 
         Vector3d prevTranslation(prevTransf(0,3), prevTransf(1,3), prevTransf(2,3));
 
@@ -306,9 +310,14 @@ int main(int argc, char *argv[]){
             //************ REFINE ALIGNMENT ************//
             auto start = high_resolution_clock::now();
 
-            //std::pair<VectorXd, double> result = aligner.getPoseTransformOpen3d(rgbdImage1, rgbdImage2,
-            //                                                                    aligner.getPoseExponentialMap2(pose).inverse());
-            std::pair<VectorXd, double> result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
+            std::pair<VectorXd, double> result;
+            if(isOpen3D){
+                result = aligner.getPoseTransformOpen3d(rgbdImage1, rgbdImage2,
+                                   TransformVector6dToMatrix4d(pose).inverse());
+            }
+            else{
+                result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
+            }
             pose = result.first;
             errorDepth = result.second;
             auto stop = high_resolution_clock::now();
@@ -327,8 +336,7 @@ int main(int argc, char *argv[]){
         }
 
         if(!groundTruth){
-            t = TransformVector6dToMatrix4d(pose).inverse();
-            //t = aligner.getPoseExponentialMap2(pose).inverse();
+            t = TransformVector6dToMatrix4d(pose).inverse();            
             prevTransf = transf;
             transf = transf * t;
             actualPose = actualPose * t;

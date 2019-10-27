@@ -1,6 +1,9 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#include <eigen3/Eigen/Core>
+#include <eigen3/Eigen/Geometry>
+#include <unsupported/Eigen/MatrixFunctions>
 #include <Open3D/Geometry/PointCloud.h>
 #include <Open3D/Geometry/RGBDImage.h>
 #include <Open3D/Utility/Helper.h>
@@ -720,15 +723,31 @@ void weighting(MatrixXd &residuals, MatrixXd &weights) {
 
 
 Eigen::Matrix4d TransformVector6dToMatrix4d(Eigen::VectorXd &input) {
-    Eigen::Matrix4d output;
-    output.setIdentity();
-    output.block<3, 3>(0, 0) =
-            (Eigen::AngleAxisd(input(5), Eigen::Vector3d::UnitZ()) *
-             Eigen::AngleAxisd(input(4), Eigen::Vector3d::UnitY()) *
-             Eigen::AngleAxisd(input(3), Eigen::Vector3d::UnitX()))
-                    .matrix();
-    output.block<3, 1>(0, 3) = input.block<3, 1>(0, 0);
-    return output;
+    double x = input(0);
+    double y = input(1);
+    double z = input(2);
+    double yaw = input(3);
+    double pitch = input(4);
+    double roll = input(5);
+
+    Matrix4d lie;
+    lie << 0.f,  -roll, pitch,    x,
+            roll,   0.f,  -yaw,    y,
+            -pitch,   yaw,    0.f,   z,
+            0.f,   0.f,    0.f, 0.f;
+
+    lie = lie.exp();
+    return lie;
+    //    Eigen::Matrix4d output;
+    //    output.setIdentity();
+    //    output.block<3, 3>(0, 0) =
+    //            (Eigen::AngleAxisd(input(5), Eigen::Vector3d::UnitZ()) *
+    //             Eigen::AngleAxisd(input(4), Eigen::Vector3d::UnitY()) *
+    //             Eigen::AngleAxisd(input(3), Eigen::Vector3d::UnitX()))
+    //                    .matrix();
+    //    output.block<3, 1>(0, 3) = input.block<3, 1>(0, 0);
+    //    output = output.exp();
+    //    return output;
 }
 
 Eigen::VectorXd TransformMatrix4dToVector6d(Eigen::Matrix4d &input) {
@@ -848,5 +867,4 @@ double interpolateDepth(Mat &depth, double &x, double &y, double &z)
 
     return val;
 }
-
 #endif

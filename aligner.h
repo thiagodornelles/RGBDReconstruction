@@ -295,19 +295,31 @@ public:
                 if((transfR_int >= 0 && transfR_int < nRows) &&
                         (transfC_int >= 0 && transfC_int < nCols)
                         && refPoint3D(2) > minDist && refPoint3D(2) < maxDist) {
-                    double pixInt1 = (double)*(refIntImage.ptr<uchar>(y, x))/255.0;
-                    double pixInt2 = interpolateIntensityWithDepth(actIntImage, actDepImage, transfC, transfR, pz);
-                    //double pixInt2 = (double)*(actIntImage.ptr<uchar>(transfR_int, transfC_int))/255.0;
-                    double pixDep1 = interpolateDepth(refDepImage, transfC, transfR, trfPoint3D(2));
-                    double pixDep2 = interpolateDepth(actDepImage, transfC, transfR, pz);
-                    //double pixDep2 = *actDepImage.ptr<double>(transfR_int, transfC_int);
+                    double xd = x;
+                    double yd = y;
+
+//                    double pixInt1 = interpolateInt(refIntImage, xd, yd);
+//                    double pixInt1 = (double)*(refIntImage.ptr<uchar>(y, x))/255.0;
+//                    double pixInt2 = interpolateInt(actIntImage, transfC, transfR);
+//                    double pixDep1 = interpolateDep(refDepImage, xd, yd);
+//                    double pixDep1 = *refDepImage.ptr<double>(y, x);
+//                    double pixDep2 = interpolateDep(actDepImage, transfC, transfR);
+
+                    double pixInt1 = interpolateIntensityWithDepth(refIntImage, refDepImage,
+                                                                   xd, yd, refPoint3D(2));
+                    double pixInt2 = interpolateIntensityWithDepth(actIntImage, actDepImage,
+                                                                   transfC, transfR,
+                                                                   trfPoint3D(2));
+                    double pixDep1 = interpolateDepth(refDepImage, xd, yd, refPoint3D(2));
+                    double pixDep2 = interpolateDepth(actDepImage, transfC, transfR,
+                                                      trfPoint3D(2));
 
                     //Assign the pixel residual and jacobian to its corresponding row
                     uint i = nCols * y + x;
 
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
-                    dInt = dInt > 0.05 ? dInt : 0;
+//                    dInt = dInt > 0.15 ? dInt : 0;
                     double dDep = nz * (pixDep2 - pixDep1);
                     dDep = pixDep1 < minDist ? 0 : dDep;
                     dDep = pixDep2 < minDist ? 0 : dDep;
@@ -473,11 +485,13 @@ public:
     std::pair<VectorXd, double> getPoseTransformOpen3d(shared_ptr<RGBDImage> source,
                                                        shared_ptr<RGBDImage> target,
                                                        Matrix4d odo_init){
+        odometry::OdometryOption option = odometry::OdometryOption();
+        option.max_depth_diff_ = 0.03;
         std::tuple<bool, Eigen::Matrix4d, Eigen::Matrix6d> rgbd_odo =
                 odometry::ComputeRGBDOdometry(
                     *source, *target, intrinsics, odo_init,
                     odometry::RGBDOdometryJacobianFromHybridTerm(),
-                    odometry::OdometryOption());
+                    option);
         Matrix4d trf = get<1>(rgbd_odo);
         VectorXd out = TransformMatrix4dToVector6d(trf);
         return make_pair(out, 1);
