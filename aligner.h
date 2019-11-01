@@ -300,9 +300,13 @@ public:
 
 //                    double pixInt1 = interpolateInt(refIntImage, xd, yd);
 //                    double pixInt1 = (double)*(refIntImage.ptr<uchar>(y, x))/255.0;
-//                    double pixInt2 = interpolateInt(actIntImage, transfC, transfR);
+//                    double pixInt2 = (double)*(actIntImage.ptr<uchar>(transfR_int, transfC_int))/255.0;
+//                    double pixInt2 = interpolateIntensityWithDepth(actIntImage, actDepImage,
+//                                                                   transfC, transfR,
+//                                                                   trfPoint3D(2));
 //                    double pixDep1 = interpolateDep(refDepImage, xd, yd);
 //                    double pixDep1 = *refDepImage.ptr<double>(y, x);
+//                    double pixDep2 = *actDepImage.ptr<double>(transfR_int, transfC_int);
 //                    double pixDep2 = interpolateDep(actDepImage, transfC, transfR);
 
                     double pixInt1 = interpolateIntensityWithDepth(refIntImage, refDepImage,
@@ -310,9 +314,8 @@ public:
                     double pixInt2 = interpolateIntensityWithDepth(actIntImage, actDepImage,
                                                                    transfC, transfR,
                                                                    trfPoint3D(2));
-                    double pixDep1 = interpolateDepth(refDepImage, xd, yd, refPoint3D(2));
-                    double pixDep2 = interpolateDepth(actDepImage, transfC, transfR,
-                                                      trfPoint3D(2));
+                    double pixDep1 = trfPoint3D(2);
+                    double pixDep2 = *actDepImage.ptr<double>(transfR_int, transfC_int);
 
                     //Assign the pixel residual and jacobian to its corresponding row
                     uint i = nCols * y + x;
@@ -324,10 +327,10 @@ public:
                     dDep = pixDep1 < minDist ? 0 : dDep;
                     dDep = pixDep2 < minDist ? 0 : dDep;
                     double diff = abs(dDep);
-                    dDep = diff > 1.0 ? 0 : dDep;
+//                    dDep = diff > 0.5 ? 0 : dDep;
                     double wDep = *weight.ptr<double>(transfR_int, transfC_int) * depth;
                     double wInt = wDep * color;
-                    wDep *= depthWeight;
+                    wDep *= 20;
                     //double maxCurv = 0.5;
                     //double minCurv = 0.2;
                     //wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;

@@ -111,11 +111,11 @@ int main(int argc, char *argv[]){
     aligner.depthScale = depthScale;
 
     //0.000125
-    ScalableTSDFVolume tsdf(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
+    ScalableTSDFVolume tsdf(1.f/depthScale, 0.02, TSDFVolumeColorType::RGB8);
     ScalableTSDFVolume tsdfParcial(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
     ScalableTSDFVolume tsdfFinal(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/Users/thiago/Datasets/3d-printed-dataset/Kinect_Leopard_Handheld/";
+    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Kenny_Turntable/";
 //    string datasetFolder = "/Users/thiago/Datasets/3d-printed-dataset/Kinect_Tank_Handheld/";
 
     //Output file with poses
