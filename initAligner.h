@@ -66,7 +66,7 @@ double getMatchingsBetween2Frames(Mat &depth1, Mat &rgb1, Mat &rgb2,
             }
         }
     }
-
+/*
     Mat image1 = rgb1.clone();
     Mat image2 = rgb2.clone();
     for (int i = 0; i < points1.size(); ++i) {
@@ -79,6 +79,7 @@ double getMatchingsBetween2Frames(Mat &depth1, Mat &rgb1, Mat &rgb2,
     }
     imshow("matchings1", image1);
     imshow("matchings2", image2);
+*/
     return meanDist/points1.size();
 }
 
@@ -117,7 +118,7 @@ VectorXd coarseRegistration(Mat &depth2, Mat &rgb2, Mat &depth1, Mat &rgb1,
     Mat rvec = Mat::zeros(3, 1, CV_64FC1);
     Mat tvec = Mat::zeros(3, 1, CV_64FC1);
     Mat distCoeffs = Mat::zeros(4, 1, CV_64FC1);
-    solvePnPRansac(points1_3d, points1, camMatrix, distCoeffs, rvec, tvec, false, 100, 0.1, 0.9999, noArray(), SOLVEPNP_EPNP);
+    solvePnPRansac(points1_3d, points1, camMatrix, distCoeffs, rvec, tvec, false, 150, 0.1, 0.9999, noArray(), SOLVEPNP_EPNP);
 //    Mat R;
 //    Rodrigues(rvec, R);
 //    transf <<                   0, -rvec.at<double>(2,0),  rvec.at<double>(1,0), tvec.at<double>(0,0),

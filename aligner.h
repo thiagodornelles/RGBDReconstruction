@@ -299,7 +299,6 @@ public:
                     double yd = y;
 
 //                    double pixInt1 = interpolateInt(refIntImage, xd, yd);
-//                    double pixInt1 = (double)*(refIntImage.ptr<uchar>(y, x))/255.0;
 //                    double pixInt2 = (double)*(actIntImage.ptr<uchar>(transfR_int, transfC_int))/255.0;
 //                    double pixInt2 = interpolateIntensityWithDepth(actIntImage, actDepImage,
 //                                                                   transfC, transfR,
@@ -309,8 +308,9 @@ public:
 //                    double pixDep2 = *actDepImage.ptr<double>(transfR_int, transfC_int);
 //                    double pixDep2 = interpolateDep(actDepImage, transfC, transfR);
 
-                    double pixInt1 = interpolateIntensityWithDepth(refIntImage, refDepImage,
-                                                                   xd, yd, refPoint3D(2));
+//                    double pixInt1 = interpolateIntensityWithDepth(refIntImage, refDepImage,
+//                                                                   xd, yd, trfPoint3D(2));
+                    double pixInt1 = (double)*(refIntImage.ptr<uchar>(y, x))/255.0;
                     double pixInt2 = interpolateIntensityWithDepth(actIntImage, actDepImage,
                                                                    transfC, transfR,
                                                                    trfPoint3D(2));
@@ -330,7 +330,7 @@ public:
 //                    dDep = diff > 0.5 ? 0 : dDep;
                     double wDep = *weight.ptr<double>(transfR_int, transfC_int) * depth;
                     double wInt = wDep * color;
-                    wDep *= 20;
+                    wDep *= depthWeight;
                     //double maxCurv = 0.5;
                     //double minCurv = 0.2;
                     //wDep = wDep >= minCurv && wDep <= maxCurv ? wDep : 0;
@@ -552,6 +552,7 @@ public:
             double a = 1.1;
             double b = 1.1;
             int countMin = 0;
+            int countNotMin = 0;
             bool color = true;
             bool depth = true;
             for (int i = 0; i < iteratLevel[l]; ++i) {
@@ -560,27 +561,30 @@ public:
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
                                              pyrWeights[l], pyrNormalMap[l], residuals, jacobians,
-                                             10, l, color, depth);
+                                             20, l, color, depth);
 
                 minimized = doSingleIteration(residuals, jacobians, m*lambdas[l], 1);
-                if (!minimized){                    
+                if (!minimized){
                     m *= 1/a;
-                    actualPoseVector6D = bestPoseVector6D;
+                    actualPoseVector6D = bestPoseVector6D;                    
+                    if(++countNotMin >= 3)
+                        break;
                 }
                 else{                    
-                    countMin++;
                     m *= b;
-                }
+                    countMin++;
+                    countNotMin = 0;
+                }                
             }
             cerr << "Minimized " << countMin << " times\n" << endl;
         }
 
-        MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
-        MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
-        double outlierRatio = computeResidualsAndJacobians(tempRefGray, tempRefDepth,
-                                                           tempActGray, tempActDepth,
-                                                           pyrWeights[0], normalMap, residuals, jacobians, 10, 0);
-        return make_pair(bestPoseVector6D, outlierRatio);
+//        MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
+//        MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);
+//        double outlierRatio = computeResidualsAndJacobians(tempRefGray, tempRefDepth,
+//                                                           tempActGray, tempActDepth,
+//                                                           pyrWeights[0], normalMap, residuals, jacobians, 10, 0);
+        return make_pair(bestPoseVector6D, 1);
     }
 };
 #endif

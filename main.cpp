@@ -115,8 +115,8 @@ int main(int argc, char *argv[]){
     ScalableTSDFVolume tsdfParcial(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
     ScalableTSDFVolume tsdfFinal(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
 
-    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Kenny_Turntable/";
-//    string datasetFolder = "/Users/thiago/Datasets/3d-printed-dataset/Kinect_Tank_Handheld/";
+//    string datasetFolder = "/Users/thiago/Datasets/3d-printed-dataset/Kinect_Leopard_Turntable/";
+    string datasetFolder = "/Users/thiago/Datasets/3d-printed-dataset/Kinect_Leopard_Handheld/";
 
     //Output file with poses
     ofstream posesFile, diffFile, poseGraphFile;
