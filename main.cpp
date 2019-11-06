@@ -111,12 +111,12 @@ int main(int argc, char *argv[]){
     aligner.depthScale = depthScale;
 
     //0.000125
-    ScalableTSDFVolume tsdf(1.f/depthScale, 0.02, TSDFVolumeColorType::RGB8);
+    ScalableTSDFVolume tsdf(1.f/300, 0.02, TSDFVolumeColorType::RGB8);
     ScalableTSDFVolume tsdfParcial(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
     ScalableTSDFVolume tsdfFinal(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
 
 //    string datasetFolder = "/Users/thiago/Datasets/3d-printed-dataset/Kinect_Leopard_Turntable/";
-    string datasetFolder = "/Users/thiago/Datasets/3d-printed-dataset/Kinect_Leopard_Handheld/";
+    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Teddy_Turntable/";
 
     //Output file with poses
     ofstream posesFile, diffFile, poseGraphFile;
@@ -203,16 +203,15 @@ int main(int argc, char *argv[]){
                 projectPointCloudExtended(*pcdExtended, maxDistProjection, transf.inverse(),
                                           intrinsics, depthScale, radius, initFrame, i1, depth2, index2);
             }
-            else{
+            else{                
                 Mat color;
-                projectPointCloudWithColor(*tsdf.ExtractPointCloud(), maxDistProjection, depthScale,
-                                           transf.inverse(), intrinsics, depth2, color);
-                imshow("previewModel", color);                
+                projectMesh(tsdf.ExtractTriangleMesh(), maxDistProjection, depthScale, transf.inverse(), intrinsics, depth2, color);
+                //imshow("previewModel", color);
             }
         }
         depth1 = applyMaskDepth(depth1, mask1);
         threshold(depth1, depth1, 500, 65535, THRESH_TOZERO);
-        threshold(depth1, depth1, 1000, 65535, THRESH_TOZERO_INV);
+        threshold(depth1, depth1, 1100, 65535, THRESH_TOZERO_INV);
         Mat gray1;
         Mat gray2;
         cvtColor(rgb1, gray1, CV_BGR2GRAY);
@@ -248,7 +247,7 @@ int main(int argc, char *argv[]){
         imshow("previewNormals", model);
 
 
-        Image rgb = CreateRGBImageFromMat(&rgb1);
+        Image rgb = CreateRGBImageFromMat(&rgb1);        
         Image depth = CreateDepthImageFromMat(&depth1, NULL);
         rgbdImage = CreateRGBDImageFromColorAndDepth(rgb, depth, depthScale, 1.5, false);
 
@@ -348,7 +347,7 @@ int main(int argc, char *argv[]){
         //cerr << "TRANSLATION: " << totalTransl << endl;
         //cerr << "ANGLE: " << totalAngle << endl;
 
-        char key = waitKey(100);
+        char key = waitKey(200);
         if(i == finalFrame || key == 'z'){
             Visualizer vis;
             vis.CreateVisualizerWindow("Visualization", 800, 600);
@@ -358,7 +357,7 @@ int main(int argc, char *argv[]){
             vis.GetRenderOption().mesh_show_back_face_ = true;
             vis.GetViewControl().SetViewMatrices(initCam);
             if(generateMesh){                
-                mesh = tsdf.ExtractTriangleMesh();
+                mesh = tsdf.ExtractTriangleMesh();                
                 vis.AddGeometry({mesh});                
             }
             else{

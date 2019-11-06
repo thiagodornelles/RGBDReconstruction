@@ -16,6 +16,12 @@
 #include "pointcloudextend.h"
 #include "visibility.h"
 
+#include <GL/gl.h>
+#include <GL/glu.h>
+
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/opengl.hpp>
+
 using namespace open3d;
 using namespace open3d::io;
 using namespace open3d::camera;
@@ -113,6 +119,13 @@ Mat convertDepthTo16bit(std::shared_ptr<Image> depth, double depthScale){
     Mat depth16;
     Mat depth32(depth->height_, depth->width_, CV_32FC1, depth->data_.data());
     depth32.convertTo(depth16, CV_16UC1, depthScale);
+    return depth16;
+}
+
+Mat convertDepthToDouble(std::shared_ptr<Image> depth, double depthScale){
+    Mat depth16;
+    Mat depth32(depth->height_, depth->width_, CV_32FC1, depth->data_.data());
+    depth32.convertTo(depth16, CV_64FC1, 1);
     return depth16;
 }
 
@@ -388,15 +401,87 @@ void projectPointCloudWithColor(PointCloud pointCloud, double maxDist, double de
             ushort lastZ = *depthMap.ptr<ushort>(transfR_int, transfC_int);
             ushort value = refPoint3d(2) * depthScale;
             Vec3b color = Vec3b(pointCloud.colors_[i](2)*255,pointCloud.colors_[i](1)*255, pointCloud.colors_[i](0)*255);
-                    if(value < lastZ){
+            if(value < lastZ){
                     *depthMap.ptr<ushort>(transfR_int, transfC_int) = value;
                     //*colorMap.ptr<Vec3b>(transfR_int, transfC_int) = color;
                     circle(colorMap, Point(transfC_int, transfR_int), radius, color, -1);
-        }
+            }
         }
     }
     depthMap.setTo(0, depthMap == 65535);
     medianBlur(depthMap, depthMap, 3);
+}
+
+void projectMesh(shared_ptr<TriangleMesh> mesh, double maxDist, double depthScale,
+                 Eigen::Matrix4d Rt, PinholeCameraIntrinsic intrinsics,
+                 Mat &depthMap, Mat &colorMap){
+
+    int width = intrinsics.width_;
+    int height = intrinsics.height_;
+
+    visualization::Visualizer vis;
+    vis.CreateVisualizerWindow("render", width, height, 0, 0, false);
+    vis.AddGeometry({mesh});
+    PinholeCameraParameters params;
+    vis.GetViewControl().ConvertToPinholeCameraParameters(params);    
+    intrinsics.intrinsic_matrix_(0, 2) = width/2 - 0.5;
+    intrinsics.intrinsic_matrix_(1, 2) = height/2 - 0.5;
+    params.intrinsic_ = intrinsics;
+    params.extrinsic_ = Rt;
+    vis.GetViewControl().ConvertFromPinholeCameraParameters(params);
+    shared_ptr<Image> image = vis.CaptureDepthFloatBuffer(true);
+    depthMap = convertDepthTo16bit(image, depthScale);
+    vis.DestroyVisualizerWindow();
+/*
+    double cx = intrinsics.GetPrincipalPoint().first;
+    double cy = intrinsics.GetPrincipalPoint().second;
+    double fx = intrinsics.GetFocalLength().first;
+    double fy = intrinsics.GetFocalLength().second;
+
+    depthMap.create(height, width, CV_16UC1);
+    depthMap.setTo(65535);
+    colorMap.create(height, width, CV_8UC3);
+    colorMap.setTo(0);
+
+    for (int i = 0; i < mesh->triangles_.size(); i++) {
+        for(int j = 0; j < 3; j++){
+            Eigen::Vector3d point = mesh->vertices_[mesh->triangles_[i](j)];
+            Eigen::Vector4d refPoint3d;
+            refPoint3d(0) = point(0);
+            refPoint3d(1) = point(1);
+            refPoint3d(2) = point(2);
+            refPoint3d(3) = 1;
+            refPoint3d = Rt * refPoint3d;
+            double invTransfZ = 1.0 / refPoint3d(2);
+
+            //******* BEGIN Projection of PointCloud on the image plane ********
+            double transfC = (refPoint3d(0) * fx) * invTransfZ + cx;
+            double transfR = (refPoint3d(1) * fy) * invTransfZ + cy;
+            int transfR_int = static_cast<int>(round(transfR));
+            int transfC_int = static_cast<int>(round(transfC));
+            //******* END Projection of PointCloud on the image plane ********
+
+            if(refPoint3d(2) > maxDist)
+                break;
+
+            //Checks if this pixel projects inside of the image
+            if((transfR_int > 0 && transfR_int < height) &&
+                    (transfC_int > 0 && transfC_int < width)) {
+
+                ushort lastZ = *depthMap.ptr<ushort>(transfR_int, transfC_int);
+                ushort value = refPoint3d(2) * depthScale;
+                Eigen::Vector3d col = mesh->vertex_colors_[mesh->triangles_[i](j)];
+                Vec3b color = Vec3b(col(2) * 255, col(1) * 255, col(0) * 255);
+                if(value < lastZ){
+                    //*depthMap.ptr<ushort>(transfR_int, transfC_int) = value;
+                    *colorMap.ptr<Vec3b>(transfR_int, transfC_int) = color;                    
+                    //circle(colorMap, Point(transfC_int, transfR_int), 1, color, -1);
+                }
+            }
+        }
+    }
+    depthMap.setTo(0, depthMap == 65535);
+*/
 }
 
 void projectPointCloud(PointCloud pointCloud, double maxDist, double depthScale,                       

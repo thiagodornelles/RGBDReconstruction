@@ -295,8 +295,8 @@ public:
                 if((transfR_int >= 0 && transfR_int < nRows) &&
                         (transfC_int >= 0 && transfC_int < nCols)
                         && refPoint3D(2) > minDist && refPoint3D(2) < maxDist) {
-                    double xd = x;
-                    double yd = y;
+//                    double xd = x;
+//                    double yd = y;
 
 //                    double pixInt1 = interpolateInt(refIntImage, xd, yd);
 //                    double pixInt2 = (double)*(actIntImage.ptr<uchar>(transfR_int, transfC_int))/255.0;
@@ -322,12 +322,12 @@ public:
 
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
-//                    dInt = dInt > 0.15 ? dInt : 0;
+                    dInt = dInt < 0.025 ? 0 : dInt;
                     double dDep = nz * (pixDep2 - pixDep1);
                     dDep = pixDep1 < minDist ? 0 : dDep;
                     dDep = pixDep2 < minDist ? 0 : dDep;
                     double diff = abs(dDep);
-//                    dDep = diff > 0.5 ? 0 : dDep;
+                    dDep = diff > 0.05 ? 0 : dDep;
                     double wDep = *weight.ptr<double>(transfR_int, transfC_int) * depth;
                     double wInt = wDep * color;
                     wDep *= depthWeight;
@@ -351,8 +351,8 @@ public:
                     residuals(nCols * transfR_int + transfC_int, 0) = wInt * dInt * color;
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wDep * dDep * depth;
 
-                    residualImage.at<double>(transfR_int, transfC_int) = wInt * dInt * color;
-                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = wDep * abs(dDep) * depth * 1;
+                    residualImage.at<double>(transfR_int, transfC_int) = wInt * dInt * color * 2;
+                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = wDep * abs(dDep) * depth * 2;
                     if(diff > 0.01){
                         count[nThread] += 1;
                     }
@@ -561,22 +561,24 @@ public:
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
                                              pyrWeights[l], pyrNormalMap[l], residuals, jacobians,
-                                             20, l, color, depth);
+                                             10, l, color, depth);
 
                 minimized = doSingleIteration(residuals, jacobians, m*lambdas[l], 1);
                 if (!minimized){
+                    //cerr << "Not\n";
                     m *= 1/a;
                     actualPoseVector6D = bestPoseVector6D;                    
                     if(++countNotMin >= 3)
                         break;
                 }
-                else{                    
+                else{
+                    //cerr << "Yes\n";
                     m *= b;
                     countMin++;
                     countNotMin = 0;
                 }                
             }
-            cerr << "Minimized " << countMin << " times\n" << endl;
+            cerr << "Minimized " << countMin << " times\n" << endl;            
         }
 
 //        MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
