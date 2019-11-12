@@ -49,6 +49,8 @@ int main(int argc, char *argv[]){
     int finalFrame = 1000;
     int step = 1;
 
+    string datasetFolder = "";
+
     if(argc > 1){
         string genMesh = argv[1];
         if(genMesh == "mesh"){
@@ -56,28 +58,32 @@ int main(int argc, char *argv[]){
             initFrame = atoi(argv[2]);
             finalFrame = atoi(argv[3]);
             step = atoi(argv[4]);
-            if(argc == 6){
-                string open3dArg = argv[5];
+            datasetFolder = argv[5];
+            if(argc == 7){
+                string open3dArg = argv[6];
                 isOpen3D = open3dArg == "open3d" ? true : false;
-            }            
+            }
         }
         else if(genMesh == "gt"){
             groundTruth = true;
             generateMesh = true;
-            if(argc == 5){
+            if(argc == 6){
                 initFrame = atoi(argv[2]);
                 finalFrame = atoi(argv[3]);
                 step = atoi(argv[4]);
+                datasetFolder = argv[5];
             }
         }
         else{
             initFrame = atoi(argv[1]);
             finalFrame = atoi(argv[2]);
             step = atoi(argv[3]);
+            datasetFolder = argv[4];
         }
     }
 
     cerr << CV_VERSION << endl;
+    cerr << datasetFolder << endl;
 
     Eigen::Matrix4d t = Eigen::Matrix4d::Identity();
     Eigen::Matrix4d transf = Eigen::Matrix4d::Identity();
@@ -116,7 +122,7 @@ int main(int argc, char *argv[]){
     ScalableTSDFVolume tsdfFinal(1.f/depthScale, 0.015, TSDFVolumeColorType::RGB8);
 
 //    string datasetFolder = "/Users/thiago/Datasets/3d-printed-dataset/Kinect_Leopard_Turntable/";
-    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Teddy_Turntable/";
+//    string datasetFolder = "/media/thiago/BigStorage/3d-printed-dataset/Kinect_Teddy_Turntable/";
 
     //Output file with poses
     ofstream posesFile, diffFile, poseGraphFile;
@@ -238,7 +244,7 @@ int main(int argc, char *argv[]){
 
         Mat normalMap1 = getNormalMapFromDepth(depthTmp1, intrinsics, 0, depthScale);
         Mat maskNormals = getNormalWeight(normalMap1, depthTmp1, intrinsics, false);
-        imshow("normals", maskNormals);
+        //imshow("normals", maskNormals);
 
         Mat depthTmp2;
         depth2.convertTo(depthTmp2, CV_64FC1, 1.0/depthScale);
@@ -294,6 +300,7 @@ int main(int argc, char *argv[]){
         }
 
         VectorXd pose;
+        Matrix4d open3DTrf;
         if(!groundTruth){            
             //************ INITIAL ALIGNMENT ************//
             double focal = intrinsics.GetFocalLength().first;
@@ -302,31 +309,36 @@ int main(int argc, char *argv[]){
 
             pose = coarseRegistration(depthTmp1, rgb1, depthTmp2, rgb2, focal, cx, cy);
             aligner.setInitialPoseVector(pose);
-            cerr << TransformVector6dToMatrix4d(pose).inverse();
-            cerr << "--------" << endl;
+            cerr << TransformVector6dToMatrix4d(pose).inverse() << endl;
             //************ INITIAL ALIGNMENT ************//
 
             //************ REFINE ALIGNMENT ************//
             auto start = high_resolution_clock::now();
 
-            std::pair<VectorXd, double> result;
+            std::pair<VectorXd, double> result;            
             if(isOpen3D){
-                result = aligner.getPoseTransformOpen3d(rgbdImage1, rgbdImage2,
+                pose.setZero(6);
+                open3DTrf = aligner.getPoseTransformOpen3d(rgbdImage1, rgbdImage2,
                                    TransformVector6dToMatrix4d(pose).inverse());
             }
             else{
                 result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
-            }
-            pose = result.first;
-            errorDepth = result.second;
+                pose = result.first;
+                errorDepth = result.second;
+                cerr << "Obtida transf:\n" << TransformVector6dToMatrix4d(pose).inverse() << endl;
+            }            
             auto stop = high_resolution_clock::now();
-            cerr << "Obtida transf:\n" << TransformVector6dToMatrix4d(pose).inverse() << endl;
             //************ REFINE ALIGNMENT ************//
         }
         //GroundTruth tests
         else{
-            prevTransf = transf;
-            transf = posesRefined[i+1];
+            Eigen::Matrix4d reflect = Eigen::Matrix4d::Identity();
+            reflect <<  1,  0,  0,  0,
+                        0, -1,  0,  0,
+                        0,  0, -1,  0,
+                        0,  0,  0,  1;
+            prevTransf = reflect * transf;
+            transf = reflect * posesRefined[i+1];
             actualPose = transf;
         }
 
@@ -335,7 +347,11 @@ int main(int argc, char *argv[]){
         }
 
         if(!groundTruth){
-            t = TransformVector6dToMatrix4d(pose).inverse();            
+            if(!isOpen3D)
+                t = TransformVector6dToMatrix4d(pose).inverse();
+            else
+                t = open3DTrf.inverse();
+
             prevTransf = transf;
             transf = transf * t;
             actualPose = actualPose * t;

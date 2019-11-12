@@ -327,7 +327,7 @@ public:
                     dDep = pixDep1 < minDist ? 0 : dDep;
                     dDep = pixDep2 < minDist ? 0 : dDep;
                     double diff = abs(dDep);
-                    dDep = diff > 0.05 ? 0 : dDep;
+                    dDep = diff > 0.5 ? 0 : dDep;
                     double wDep = *weight.ptr<double>(transfR_int, transfC_int) * depth;
                     double wInt = wDep * color;
                     wDep *= depthWeight;
@@ -351,8 +351,8 @@ public:
                     residuals(nCols * transfR_int + transfC_int, 0) = wInt * dInt * color;
                     residuals(nCols * 2 * transfR_int + 2 * transfC_int, 0) = wDep * dDep * depth;
 
-                    residualImage.at<double>(transfR_int, transfC_int) = wInt * dInt * color * 2;
-                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = wDep * abs(dDep) * depth * 2;
+                    residualImage.at<double>(transfR_int, transfC_int) = wInt * abs(dInt) * color * 1;
+                    residualImage.at<double>(nRows-1 + transfR_int, nCols-1 + transfC_int) = wDep * abs(dDep) * depth * 1;
                     if(diff > 0.01){
                         count[nThread] += 1;
                     }
@@ -361,20 +361,6 @@ public:
         }, nthreads
         );
 
-        //        if (level == 0){
-        //            resize(residualImage, residualImage, Size(residualImage.cols/2, residualImage.rows/2));
-        //            Matrix4d Id = Matrix4d::Identity();
-        //            Mat m1 = transfAndProject(refDepImage, 1, Rt, intrinsecs);
-        //            Mat m2 = transfAndProject(actDepImage, 1, Id, intrinsecs);
-        //            Mat m3;
-        //            m3 = m2 - m1;
-        //threshold(m3, m3, 0.001, 0, THRESH_TOZERO_INV);
-        //            Scalar mean, stddev;
-        //            meanStdDev(residualImage, mean, stddev);
-        //            cerr << "Mean " << mean[0] << " Stddev " << stddev[0] << endl;
-        //            m3 *= 200;
-        //            imshow("difference", m3);
-        //        }
         imshow("Residual", residualImage);
         waitKey(1);
         double totalCount = 0;
@@ -485,19 +471,18 @@ public:
         return false;
     }
 
-    std::pair<VectorXd, double> getPoseTransformOpen3d(shared_ptr<RGBDImage> source,
+    Matrix4d getPoseTransformOpen3d(shared_ptr<RGBDImage> source,
                                                        shared_ptr<RGBDImage> target,
                                                        Matrix4d odo_init){
         odometry::OdometryOption option = odometry::OdometryOption();
-        option.max_depth_diff_ = 0.03;
+        //option.max_depth_diff_ = 0.3;
         std::tuple<bool, Eigen::Matrix4d, Eigen::Matrix6d> rgbd_odo =
                 odometry::ComputeRGBDOdometry(
                     *source, *target, intrinsics, odo_init,
                     odometry::RGBDOdometryJacobianFromHybridTerm(),
                     option);
-        Matrix4d trf = get<1>(rgbd_odo);
-        VectorXd out = TransformMatrix4dToVector6d(trf);
-        return make_pair(out, 1);
+        Matrix4d trf = get<1>(rgbd_odo);        
+        return trf;
     }
 
     std::pair<VectorXd, double> getPoseTransform(Mat &refGray, Mat &refDepth, Mat &actGray, Mat &actDepth,
@@ -555,13 +540,14 @@ public:
             int countNotMin = 0;
             bool color = true;
             bool depth = true;
+            double weight = 10;
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);                
                 computeResidualsAndJacobians(tempRefGray, tempRefDepth,
                                              tempActGray, tempActDepth,
                                              pyrWeights[l], pyrNormalMap[l], residuals, jacobians,
-                                             10, l, color, depth);
+                                             weight, l, color, depth);
 
                 minimized = doSingleIteration(residuals, jacobians, m*lambdas[l], 1);
                 if (!minimized){
@@ -578,7 +564,7 @@ public:
                     countNotMin = 0;
                 }                
             }
-            cerr << "Minimized " << countMin << " times\n" << endl;            
+            cerr << "\nMinimized " << countMin << " times\n" << endl;
         }
 
 //        MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);

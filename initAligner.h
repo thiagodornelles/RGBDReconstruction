@@ -36,16 +36,17 @@ double getMatchingsBetween2Frames(Mat &depth1, Mat &rgb1, Mat &rgb2,
 
         KeyPoint kt1 = keyPoints1.at(d1.queryIdx);
         KeyPoint kt2 = keyPoints2.at(d1.trainIdx);
-        double z1 = *depth1.ptr<double>(kt2.pt.y, kt2.pt.x);
-        double z2 = *depth1.ptr<double>(kt2.pt.y, kt2.pt.x);
-        double z3 = *depth1.ptr<double>(kt2.pt.y, kt2.pt.x);
-        double z4 = *depth1.ptr<double>(kt2.pt.y, kt2.pt.x);
+        double z1 = *depth1.ptr<double>(kt2.pt.y, kt2.pt.x+1);
+        double z2 = *depth1.ptr<double>(kt2.pt.y, kt2.pt.x-1);
+        double z3 = *depth1.ptr<double>(kt2.pt.y+1, kt2.pt.x);
+        double z4 = *depth1.ptr<double>(kt2.pt.y-1, kt2.pt.x);
 
-        if (d1.distance < 0.8 * d2.distance && (z1 > 0 && z2 > 0 && z3 > 0 && z4 > 0)){
+        if (d1.distance < 0.8 * d2.distance
+                && z1 > 0 && z2 > 0 && z3 > 0 && z4 > 0){
             double dx = kt1.pt.x - kt2.pt.x;
             double dy = kt1.pt.y - kt2.pt.y;
             double dist = sqrt(dx*dx + dy*dy);
-            if (dist < 40){                
+            if (dist < 100){
                 meanDist += dist;
                 vector<DMatch> v;
                 v.push_back(d1);
@@ -75,8 +76,7 @@ double getMatchingsBetween2Frames(Mat &depth1, Mat &rgb1, Mat &rgb2,
         circle(image2, pt2, 3, cvScalar(0,0,255));
     }
     imshow("matchings1", image1);
-    imshow("matchings2", image2);
-    waitKey(1);
+    //imshow("matchings2", image2);
     return points1_3d.size();
     //return meanDist/(points1.size()+1);
 }
@@ -116,7 +116,7 @@ VectorXd coarseRegistration(Mat &depth2, Mat &rgb2, Mat &depth1, Mat &rgb1,
     Mat rvec = Mat::zeros(3, 1, CV_64FC1);
     Mat tvec = Mat::zeros(3, 1, CV_64FC1);
     Mat distCoeffs = Mat::zeros(4, 1, CV_64FC1);
-    solvePnPRansac(points1_3d, points1, camMatrix, distCoeffs, rvec, tvec, false, 150, 0.1, 0.9999, noArray(), SOLVEPNP_EPNP);
+    solvePnPRansac(points1_3d, points1, camMatrix, distCoeffs, rvec, tvec, false, 150, 0.1, 0.99999, noArray(), SOLVEPNP_EPNP);
 //    Mat R;
 //    Rodrigues(rvec, R);
 //    transf <<                   0, -rvec.at<double>(2,0),  rvec.at<double>(1,0), tvec.at<double>(0,0),
