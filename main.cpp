@@ -11,6 +11,7 @@
 #include <Open3D/Integration/ScalableTSDFVolume.h>
 #include <Open3D/Geometry/Geometry.h>
 #include <Open3D/Geometry/PointCloud.h>
+#include <Open3D/Registration/ColoredICP.h>
 #include <Open3D/Registration/GlobalOptimization.h>
 #include <Open3D/Registration/PoseGraph.h>
 #include <opencv2/highgui/highgui.hpp>
@@ -162,7 +163,7 @@ int main(int argc, char *argv[]){
             posesFile << i1 << endl;
             posesFile << actualPose << endl;
         }
-
+/*
         cerr << "diff Estimated - GT" << endl;
         cerr << (actualPose - gt_poses[i]).cwiseAbs() << endl;
         Vector4d position;
@@ -172,6 +173,7 @@ int main(int argc, char *argv[]){
         diffFile << i << endl;
         diffFile << (actualPose * position - gt_poses[i] * position).cwiseAbs() << endl;
         cerr << "difference between depths: " << errorDepth << endl;
+*/
 
         string depthPath1 = datasetFolder + "depth/" + depthFiles[i1];
         string depthPath2 = datasetFolder + "depth/" + depthFiles[i2];
@@ -309,23 +311,25 @@ int main(int argc, char *argv[]){
 
             pose = coarseRegistration(depthTmp1, rgb1, depthTmp2, rgb2, focal, cx, cy);
             aligner.setInitialPoseVector(pose);
-            cerr << TransformVector6dToMatrix4d(pose).inverse() << endl;
+            //cerr << TransformVector6dToMatrix4d(pose).inverse() << endl;
             //************ INITIAL ALIGNMENT ************//
 
             //************ REFINE ALIGNMENT ************//
             auto start = high_resolution_clock::now();
 
             std::pair<VectorXd, double> result;            
-            if(isOpen3D){
-                pose.setZero(6);
-                open3DTrf = aligner.getPoseTransformOpen3d(rgbdImage1, rgbdImage2,
-                                   TransformVector6dToMatrix4d(pose).inverse());
-            }
-            else{
+            if(!isOpen3D){
                 result = aligner.getPoseTransform(gray1, depth1, gray2, depth2, false);
                 pose = result.first;
                 errorDepth = result.second;
-                cerr << "Obtida transf:\n" << TransformVector6dToMatrix4d(pose).inverse() << endl;
+                cerr << "******Transformation******\n";
+                cerr << TransformVector6dToMatrix4d(pose).inverse() << endl;
+                cerr << "**************************\n";
+            }
+            else{
+//                pose.setZero(6);
+//                open3DTrf = aligner.getPoseTransformOpen3d(rgbdImage1, rgbdImage2,
+//                                   TransformVector6dToMatrix4d(pose).inverse());
             }            
             auto stop = high_resolution_clock::now();
             //************ REFINE ALIGNMENT ************//
@@ -338,23 +342,40 @@ int main(int argc, char *argv[]){
                         0,  0, -1,  0,
                         0,  0,  0,  1;
             prevTransf = reflect * transf;
-            transf = reflect * posesRefined[i+1];
+            transf = reflect * posesRefined[i];
+            cerr << "*******Ground Truth*******\n";
+            cerr << transf << endl;
+            cerr << "**************************\n";
             actualPose = transf;
         }
 
         if (generateMesh){
-            tsdf.Integrate(*rgbdImage, intrinsics, transf.inverse());
+            if(isOpen3D){
+                shared_ptr<PointCloud> sdf = tsdf.ExtractPointCloud();
+                //Refinement using kdtree
+                EstimateNormals(*sdf);
+                EstimateNormals(*actualPointCloud);
+    //            RegistrationResult res = RegistrationICP(*actualPointCloud, *sdf, 0.005, transf,
+    //                            TransformationEstimationPointToPlane());
+                Matrix4d init = TransformVector6dToMatrix4d(pose).inverse();
+                transf = transf * init;
+                RegistrationResult res = RegistrationColoredICP(*actualPointCloud, *sdf, 0.01, transf);
+                actualPose = res.transformation_;
+                transf = res.transformation_;
+                tsdf.Integrate(*rgbdImage, intrinsics, transf.inverse());
+            }
+            else{
+                tsdf.Integrate(*rgbdImage, intrinsics, transf.inverse());
+            }
         }
 
         if(!groundTruth){
-            if(!isOpen3D)
+            if(!isOpen3D){
                 t = TransformVector6dToMatrix4d(pose).inverse();
-            else
-                t = open3DTrf.inverse();
-
-            prevTransf = transf;
-            transf = transf * t;
-            actualPose = actualPose * t;
+                prevTransf = transf;
+                transf = transf * t;
+                actualPose = actualPose * t;
+            }
         }
 
         //auto duration = duration_cast<microseconds>(stop - start);

@@ -776,38 +776,17 @@ Mat applyMaskDepth(Mat depthMap, Mat maskMap){
     return depthClean;
 }
 
-void weighting(MatrixXd &residuals, MatrixXd &weights) {
-    int n = residuals.rows()/2;
-    double lambda_init = 1.0 / (5.0 * 5.0);
-    double lambda = lambda_init;
-    double num = 0.0;
-    double dof = 5;
-    weights = MatrixXd::Ones(residuals.rows(), 1);
-    int itr = 0;
-    do {
-        itr++;
-        lambda_init = lambda;
-        lambda = 0.0f;
-        num = 0.0f;
-        for(int i = 0; i < n; ++i) {
-            double data = residuals(i, 0);
-            if(std::isfinite(data)) {
-                num += 1.0f;
-                lambda += data * data * ( (dof + 1.0f) / (dof + lambda_init * data * data) );
-            }
-        }
-        lambda /= num;
-        lambda = 1.0f / lambda;
-    } while(std::abs(lambda - lambda_init) > 1e-3);
-
-    for(int i=0; i<n; i++){
-        double data = residuals(i, 0);
-        weights(i, 0) = ( (dof + 1.0f) / (dof + lambda * data * data) );
+void weighting(MatrixXd &residuals) {
+    int n = residuals.rows();
+    for(int i = 0; i < n; i++){
+        double ad = residuals(i, 0);//sigma;        
+        residuals(i, 0) *= ad > 0.01 ? 0 : 1;
     }
 }
 
 
 Eigen::Matrix4d TransformVector6dToMatrix4d(Eigen::VectorXd &input) {
+
     double x = input(0);
     double y = input(1);
     double z = input(2);
@@ -823,16 +802,18 @@ Eigen::Matrix4d TransformVector6dToMatrix4d(Eigen::VectorXd &input) {
 
     lie = lie.exp();
     return lie;
-    //    Eigen::Matrix4d output;
-    //    output.setIdentity();
-    //    output.block<3, 3>(0, 0) =
-    //            (Eigen::AngleAxisd(input(5), Eigen::Vector3d::UnitZ()) *
-    //             Eigen::AngleAxisd(input(4), Eigen::Vector3d::UnitY()) *
-    //             Eigen::AngleAxisd(input(3), Eigen::Vector3d::UnitX()))
-    //                    .matrix();
-    //    output.block<3, 1>(0, 3) = input.block<3, 1>(0, 0);
-    //    output = output.exp();
-    //    return output;
+    /*
+    Eigen::Matrix4d output;
+    output.setIdentity();
+    output.block<3, 3>(0, 0) =
+            (Eigen::AngleAxisd(input(5), Eigen::Vector3d::UnitZ()) *
+             Eigen::AngleAxisd(input(4), Eigen::Vector3d::UnitY()) *
+             Eigen::AngleAxisd(input(3), Eigen::Vector3d::UnitX()))
+                    .matrix();
+    output.block<3, 1>(0, 3) = input.block<3, 1>(0, 0);
+    //output = output.exp();
+    return output;
+    */
 }
 
 Eigen::VectorXd TransformMatrix4dToVector6d(Eigen::Matrix4d &input) {

@@ -154,7 +154,7 @@ public:
         int nCols = refIntImage.cols;
         int nRows = refIntImage.rows;
         double thisSum = 0;
-        const int nthreads = 2;
+        const int nthreads = 4;
         double count[nthreads] = {0};
 
         cv::setNumThreads(nthreads);
@@ -194,6 +194,12 @@ public:
                 refPoint3D(0) = (x - cx) * refPoint3D(2) * 1/fx;
                 refPoint3D(1) = (y - cy) * refPoint3D(2) * 1/fy;
                 refPoint3D(3) = 1;
+
+                Vector4d actPoint3D;
+                actPoint3D(2) = *actDepImage.ptr<double>(y, x);
+                actPoint3D(0) = (x - cx) * refPoint3D(2) * 1/fx;
+                actPoint3D(1) = (y - cy) * refPoint3D(2) * 1/fy;
+                actPoint3D(3) = 1;
                 //******* END Unprojection of DepthMap ********
 
                 //******* BEGIN Transformation of PointCloud ********
@@ -272,15 +278,22 @@ public:
                 double nx = (*normalMap.ptr<Vec3d>(y, x))[0];
                 double ny = (*normalMap.ptr<Vec3d>(y, x))[1];
                 double nz = (*normalMap.ptr<Vec3d>(y, x))[2];
-                double w1 = -ny*pz + nz*py;
-                double w2 =  nx*pz - nz*px;
-                double w3 = -nx*py + ny*px;
-                jacobianDepth(0) = nx;
-                jacobianDepth(1) = ny;
-                jacobianDepth(2) = nz;
-                jacobianDepth(3) = w1;
-                jacobianDepth(4) = w2;
-                jacobianDepth(5) = w3;
+//                double w1 = -ny*pz + nz*py;
+//                double w2 =  nx*pz - nz*px;
+//                double w3 = -nx*py + ny*px;
+
+                Eigen::Vector3d vt(trfPoint3D(0), trfPoint3D(1), trfPoint3D(2));
+                Eigen::Vector3d vs(actPoint3D(0), actPoint3D(1), actPoint3D(2));
+                Eigen::Vector3d nt(nx, ny, nz);
+
+                Eigen::Vector3d cros = vs.cross(nt);
+
+                jacobianDepth(0) = nt(0);
+                jacobianDepth(1) = nt(1);
+                jacobianDepth(2) = nt(2);
+                jacobianDepth(3) = cros(0);
+                jacobianDepth(4) = cros(1);
+                jacobianDepth(5) = cros(2);
 
                 jacobianIntensity = gradPixIntensity * jacobianProj * jacobianRt;
                 //jacobianDepth = gradPixDepth * jacobianProj * jacobianRt - jacobianRt_z;
@@ -323,11 +336,12 @@ public:
                     //Residual of the pixel
                     double dInt = pixInt2 - pixInt1;
                     dInt = dInt < 0.025 ? 0 : dInt;
+                    //double dDep = (vs - vt).dot(nt);
                     double dDep = nz * (pixDep2 - pixDep1);
                     dDep = pixDep1 < minDist ? 0 : dDep;
                     dDep = pixDep2 < minDist ? 0 : dDep;
                     double diff = abs(dDep);
-                    dDep = diff > 0.5 ? 0 : dDep;
+                    dDep = diff > 0.05 ? 0 : dDep;
                     double wDep = *weight.ptr<double>(transfR_int, transfC_int) * depth;
                     double wInt = wDep * color;
                     wDep *= depthWeight;
@@ -426,22 +440,12 @@ public:
     }
 
     bool doSingleIteration(MatrixXd &residuals, MatrixXd &jacobians,
-                           double lambda, double speed){
-
-//        double chi = residuals.squaredNorm();
-//        cerr << "chi squared " << chi << endl;
-//        double thresh = 10;
-//        if(chi > thresh){
-//            cerr << "Escalando o erro " << endl;
-//            residuals *= sqrt(10/chi);
-//        }
+                           double lambda, double speed, bool robust = false){
 
         //Weighting of residuals
-        //        MatrixXd weights;
-        //MatrixXd::Ones(rows * cols * 2, 1);
-        //        weighting(residuals, weights);
-        //        residuals = residuals.transpose() * weights;
-        //        jacobians = jacobians.transpose() * weights;
+//        if(robust){
+//            weighting(residuals);
+//        }
         MatrixXd gradients = jacobians.transpose() * residuals;
         MatrixXd hessian = jacobians.transpose() * jacobians;
         MatrixXd identity;
@@ -459,8 +463,8 @@ public:
         identity(4,4) = 1;
         identity(5,5) = 1;
         hessian += lambda * identity;
-        actualPoseVector6D -= speed * hessian.ldlt().solve(gradients);
-        //actualPoseVector6D -= hessian.inverse() * gradients;
+        //actualPoseVector6D -= speed * hessian.ldlt().solve(gradients);
+        actualPoseVector6D -= hessian.inverse() * gradients;
         //Gets best transform until now
         double gradientNorm = gradients.norm();
         if(gradientNorm < lastGradientNorm){
@@ -530,8 +534,9 @@ public:
 
             this->lastGradientNorm = DBL_MAX;
             this->sum = DBL_MAX;
-            cerr << "Initialized with:" << endl;
-            cerr << TransformVector6dToMatrix4d(actualPoseVector6D);
+            cerr << "******Initialized with******" << endl;
+            cerr << TransformVector6dToMatrix4d(actualPoseVector6D) << endl;
+            cerr << "****************************" << endl;
             bool minimized = false;                        
             double m = 1;            
             double a = 1.1;
@@ -540,7 +545,8 @@ public:
             int countNotMin = 0;
             bool color = true;
             bool depth = true;
-            double weight = 10;
+            bool robust = false;
+            double weight = 5;
             for (int i = 0; i < iteratLevel[l]; ++i) {
                 MatrixXd jacobians = MatrixXd::Zero(rows * cols * 2, 6);
                 MatrixXd residuals = MatrixXd::Zero(rows * cols * 2, 1);                
@@ -549,11 +555,11 @@ public:
                                              pyrWeights[l], pyrNormalMap[l], residuals, jacobians,
                                              weight, l, color, depth);
 
-                minimized = doSingleIteration(residuals, jacobians, m*lambdas[l], 1);
+                minimized = doSingleIteration(residuals, jacobians, m*lambdas[l], 1, robust);
                 if (!minimized){
                     //cerr << "Not\n";
                     m *= 1/a;
-                    actualPoseVector6D = bestPoseVector6D;                    
+                    actualPoseVector6D = bestPoseVector6D;
                     if(++countNotMin >= 3)
                         break;
                 }
